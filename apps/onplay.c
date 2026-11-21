@@ -1033,7 +1033,7 @@ MENUITEM_FUNCTION_W_PARAM(properties_item, 0, ID2P(LANG_PROPERTIES),
 MENUITEM_FUNCTION_W_PARAM(track_info_item, 0, ID2P(LANG_MENU_SHOW_ID3_INFO),
                   onplay_load_plugin, (void *)"properties",
                   clipboard_callback, Icon_NOICON);
-#ifdef HAVE_TAGCACHE
+#ifdef HAVE_PICTUREFLOW_INTEGRATION
 MENUITEM_FUNCTION_W_PARAM(pictureflow_item, 0, ID2P(LANG_ONPLAY_PICTUREFLOW),
                   onplay_load_plugin, (void *)"pictureflow",
                   clipboard_callback, Icon_NOICON);
@@ -1161,7 +1161,9 @@ static int clipboard_callback(int action,
             if (selected_file.context == CONTEXT_ID3DB)
             {
                 if (this_item == &track_info_item ||
+#ifdef HAVE_PICTUREFLOW_INTEGRATION
                     this_item == &pictureflow_item ||
+#endif
                     this_item == &reveal_item)
                     return action;
                 return ACTION_EXIT_MENUITEM;
@@ -1221,7 +1223,7 @@ static int clipboard_callback(int action,
                          (this_item == &reveal_item &&
                           selected_file.context == CONTEXT_WPS))
                     return action;
-#if LCD_DEPTH > 1
+#if LCD_DEPTH > 1 && !defined(HAVE_NO_BACKDROP_FILES) /* else hidden */
                 else if (this_item == &set_backdrop_item)
                 {
                     char *suffix = strrchr(selected_file.path, '.');
@@ -1293,7 +1295,7 @@ MAKE_ONPLAYMENU( tree_onplay_menu, ID2P(LANG_ONPLAY_MENU_TITLE),
            &clipboard_paste_item, &delete_file_item, &delete_dir_item,
            &list_viewers_item, &create_dir_item, &properties_item, &track_info_item,
            &reveal_item,
-#ifdef HAVE_TAGCACHE
+#ifdef HAVE_PICTUREFLOW_INTEGRATION
            &pictureflow_item,
 #endif
 #if LCD_DEPTH > 1
@@ -1516,7 +1518,7 @@ static const struct hotkey_assignment hotkey_items[] = {
       .flags = HOTKEY_FLAG_WPS | HOTKEY_FLAG_NOSBS,
       .icon = Icon_Wps},
 #endif
-#ifdef HAVE_TAGCACHE
+#ifdef HAVE_PICTUREFLOW_INTEGRATION
     { .action = HOTKEY_PICTUREFLOW,
       .lang_id = LANG_ONPLAY_PICTUREFLOW,
       .func = HOTKEY_FUNC(hotkey_tree_run_plugin, (void *)"pictureflow"),

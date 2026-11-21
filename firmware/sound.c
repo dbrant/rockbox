@@ -28,6 +28,9 @@
 #ifndef BOOTLOADER
 #include "settings.h" /* sound_current */
 #endif
+#if defined(HAVE_BLUETOOTH) && !defined(BOOTLOADER)
+#include "bluetooth.h"
+#endif
 
 /* Define sound_setting_entries table */
 #define AUDIOHW_SOUND_SETTINGS_ENTRIES
@@ -241,6 +244,18 @@ static void set_prescaled_volume(void)
 #endif
     int volume = sound_prescaler.volume;
 
+#if defined(HAVE_BLUETOOTH) && !defined(BOOTLOADER)
+    /* A Bluetooth headset with absolute volume plays at the volume itself;
+     * the PCM level then keeps only balance and prescale. The minimum
+     * still mutes the PCM (a headset need not mute at its own). */
+    const int bt_min = sound_value_to_cb(SOUND_VOLUME, sound_min(SOUND_VOLUME));
+    int bt_cut = 0;
+    if (bt_volume(volume, bt_min,
+                  sound_value_to_cb(SOUND_VOLUME, sound_max(SOUND_VOLUME))) &&
+        volume > bt_min)
+        bt_cut = volume;
+#endif
+
 #if defined(TONE_PRESCALER)
     int prescale = 0;
 
@@ -277,6 +292,10 @@ static void set_prescaled_volume(void)
     volume += prescale;
 #endif
 #endif /* TONE_PRESCALER */
+
+#if defined(HAVE_BLUETOOTH) && !defined(BOOTLOADER)
+    volume -= bt_cut;
+#endif
 
 #if defined(AUDIOHW_HAVE_MONO_VOLUME)
     audiohw_set_volume(volume);

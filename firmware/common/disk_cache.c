@@ -97,9 +97,14 @@ struct mutex disk_cache_mutex SHAREDBSS_ATTR;
 #define DCE_NEXT(fce)  ((struct disk_cache_entry *)(fce)->node.next)
 #define NODE_DCE(node) ((struct disk_cache_entry *)(node))
 
-/* get the cache index from a pointer to a buffer */
+/* get the cache index from a pointer to (or into) a buffer. Use the byte
+   offset: subtracting array pointers is only defined for whole elements, and
+   GCC turns the range checks below into "offset <= last element start",
+   which rejected pointers into the last buffer (directory entries written
+   there were never marked dirty and were lost). */
 #define DCIDX_FROM_BUF(buf) \
-    ((uint8_t (*)[DC_CACHE_BUFSIZE])(buf) - cache_buffer)
+    ((unsigned int)(((uintptr_t)(buf) - (uintptr_t)cache_buffer) / \
+                    DC_CACHE_BUFSIZE))
 
 #define DCIDX_FROM_DCE(dce) \
     ((dce) - cache_entry)

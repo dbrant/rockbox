@@ -27,6 +27,20 @@
 typedef void (*voice_play_callback_t)(const void **start, size_t *size);
 #endif
 
+#ifdef HAVE_NO_VOICE
+static inline void voice_play_data(const void *start, size_t size,
+                                   voice_play_callback_t get_more)
+    { (void)start; (void)size; (void)get_more; }
+static inline void voice_play_stop(void) {}
+static inline void voice_wait(void) {}
+static inline void voice_stop(void) {}
+static inline void voice_thread_init(void) {}
+static inline void voice_thread_kill(void) {}
+static inline void voice_set_mixer_level(int percent) { (void)percent; }
+#ifdef HAVE_PRIORITY_SCHEDULING
+static inline void voice_thread_set_priority(int priority) { (void)priority; }
+#endif
+#else
 void voice_play_data(const void *start, size_t size,
                      voice_play_callback_t get_more);
 void voice_play_stop(void);
@@ -42,5 +56,6 @@ void voice_set_mixer_level(int percent);
 #ifdef HAVE_PRIORITY_SCHEDULING
 void voice_thread_set_priority(int priority);
 #endif
+#endif /* HAVE_NO_VOICE */
 
 #endif /* VOICE_THREAD_H */

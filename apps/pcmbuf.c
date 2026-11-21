@@ -40,6 +40,10 @@
 #include "settings.h"
 #include "audio.h"
 #include "voice_thread.h"
+#ifdef HAVE_DEVLOG
+#include "devlog.h"
+#include "dev_shell.h"
+#endif
 
 /* 2 channels * 2 bytes/sample, interleaved */
 #define PCMBUF_SAMPLE_SIZE   (2 * 2)
@@ -47,7 +51,11 @@
 /* This is the target fill size of chunks on the pcm buffer
    Can be any number of samples but power of two sizes make for faster and
    smaller math - must be < 65536 bytes */
+#ifdef TARGET_PCMBUF_CHUNK_SIZE
+#define PCMBUF_CHUNK_SIZE    TARGET_PCMBUF_CHUNK_SIZE
+#else
 #define PCMBUF_CHUNK_SIZE    8192u
+#endif
 
 /* Small guard buf to give decent space near end */
 #define PCMBUF_GUARD_SIZE    (PCMBUF_CHUNK_SIZE / 8)
@@ -76,7 +84,37 @@ static inline unsigned int data_level(int quarter_secs)
 /* Number of bytes played per second */
 #define BYTERATE            (mixer_get_frequency() * PCMBUF_SAMPLE_SIZE)
 
-#if MEMORYSIZE > 2
+#ifdef TARGET_PCM_BUFFER_SIZE
+#if TARGET_PCM_BUFFER_SIZE < (4 * PCMBUF_CHUNK_SIZE) || \
+    TARGET_PCM_BUFFER_SIZE % PCMBUF_CHUNK_SIZE
+#error Target PCM ring must contain at least four whole chunks
+#endif
+#ifdef TARGET_ARENA_PCM_SIZE
+#if TARGET_ARENA_PCM_SIZE < (4 * PCMBUF_CHUNK_SIZE) || \
+    TARGET_ARENA_PCM_SIZE % PCMBUF_CHUNK_SIZE
+#error Target PCM ring must contain at least four whole chunks
+#endif
+/* The ring is in the codec arena's top while the codec leaves room for it,
+ * else the smaller TARGET_PCM_BUFFER_SIZE in the playback block
+ * (playback.c) */
+static bool arena_ring;
+#define RING_SIZE (arena_ring ? TARGET_ARENA_PCM_SIZE : TARGET_PCM_BUFFER_SIZE)
+#define PCMBUF_WATERMARK MIN(TARGET_PCMBUF_WATERMARK, RING_SIZE)
+#define LOW_DATA (RING_SIZE * 3 / 4)
+#define MIN_BUFFER_SIZE RING_SIZE
+#else
+#ifdef TARGET_PCMBUF_WATERMARK
+/* Boost below this level; playback starts at LOW_DATA (3/4 of the small
+ * ring: the first screen redraw after a track starts must not drain it). */
+#define PCMBUF_WATERMARK TARGET_PCMBUF_WATERMARK
+#define LOW_DATA (TARGET_PCM_BUFFER_SIZE * 3 / 4)
+#else
+#define PCMBUF_WATERMARK MIN(BYTERATE / 4, TARGET_PCM_BUFFER_SIZE / 2)
+#define LOW_DATA pcmbuf_watermark
+#endif
+#define MIN_BUFFER_SIZE TARGET_PCM_BUFFER_SIZE
+#endif /* TARGET_ARENA_PCM_SIZE */
+#elif MEMORYSIZE > 2
 /* Keep watermark high for large memory target - at least (2s) */
 #define PCMBUF_WATERMARK    (BYTERATE * 2)
 #define MIN_BUFFER_SIZE     (BYTERATE * 3)
@@ -134,6 +172,10 @@ static enum
     PCM_FADING_OUT,
 } fade_state = PCM_NOT_FADING;
 static bool fade_out_complete = false;
+
+#ifdef HAVE_DEVLOG
+static unsigned long dev_chunks_played;   /* chunks handed to the mixer */
+#endif
 
 /* Voice */
 static bool soft_mode = false;
@@ -474,8 +516,24 @@ void * pcmbuf_request_buffer(int *count)
     if (pcmbuf_sync_position)
         audio_pcmbuf_sync_position();
 
+#ifdef TARGET_PCM_BUFFER_SIZE
+    /* Small ring: take what fits rather than waiting for room for the whole
+     * request (a codec inserting ~18 KiB at once let a 32 KiB ring drain to
+     * ~10 KiB before every write, and decoding the next block from there
+     * underran at 64 MHz). The DSP fills partial buffers. */
+    if (freespace < size + PCMBUF_CHUNK_SIZE &&
+        freespace >= 2 * PCMBUF_CHUNK_SIZE)
+        size = freespace - PCMBUF_CHUNK_SIZE;
+#endif
     if (freespace < size + PCMBUF_CHUNK_SIZE)
+    {
+        /* With a small ring a large request can fail while the data is
+           still below the start level: start playback with what is
+           buffered, or a stopped channel never starts. */
+        if (status == CHANNEL_STOPPED && remaining > 0)
+            start_audio_playback();
         return NULL;
+    }
 
     /* Maintain the buffer level above the watermark */
     if (status != CHANNEL_STOPPED)
@@ -582,11 +640,40 @@ static void init_buffer_state(void)
     chunk_transidx = INVALID_BUF_INDEX;
 }
 
+#ifdef TARGET_ARENA_PCM_SIZE
+/* Ring size for the next pcmbuf_init(): the arena ring's or the heap's */
+void pcmbuf_set_arena_ring(bool arena)
+{
+    arena_ring = arena;
+}
+#endif
+
 /* call prior to init to get bytes required */
 size_t pcmbuf_size_reqd(void)
 {
     return get_next_required_pcmbuf_chunks() * PCMBUF_CHUNK_SIZE;
 }
+
+/* Include overhead and the worst-case descriptor/data endpoint alignment. */
+static size_t allocation_size(size_t chunks)
+{
+    return chunks * (PCMBUF_CHUNK_SIZE + sizeof(struct chunkdesc)) +
+           PCMBUF_GUARD_SIZE +
+           MAX(MEM_ALIGN_SIZE, __alignof__(struct chunkdesc)) - 1;
+}
+
+size_t pcmbuf_allocation_size_reqd(void)
+{
+    return allocation_size(get_next_required_pcmbuf_chunks());
+}
+
+#ifdef TARGET_ARENA_PCM_SIZE
+/* What the heap ring takes from the playback block, wherever the ring is now */
+size_t pcmbuf_heap_allocation_size(void)
+{
+    return allocation_size(TARGET_PCM_BUFFER_SIZE / PCMBUF_CHUNK_SIZE);
+}
+#endif
 
 /* Initialize the PCM buffer. The structure looks like this:
  * ...|---------PCMBUF---------|GUARDBUF|DESCS| */
@@ -597,7 +684,12 @@ size_t pcmbuf_init(void *bufend)
     /* Set up the buffers */
     pcmbuf_desc_count = get_next_required_pcmbuf_chunks();
     pcmbuf_size = pcmbuf_desc_count * PCMBUF_CHUNK_SIZE;
-    pcmbuf_descriptors = (struct chunkdesc *)bufend - pcmbuf_desc_count;
+    /* Allocation/resize endpoints need not be aligned. Align descriptors
+     * before typed access; aligning only the PCM data below is insufficient.
+     * Keep the original bufend so the returned size includes tail padding. */
+    pcmbuf_descriptors = (struct chunkdesc *)
+        ALIGN_DOWN(bufend, (uintptr_t)__alignof__(struct chunkdesc)) -
+        pcmbuf_desc_count;
 
     pcmbuf_buffer = (void *)pcmbuf_descriptors -
                     pcmbuf_size - PCMBUF_GUARD_SIZE;
@@ -780,6 +872,13 @@ void pcmbuf_start_track_change(enum pcm_track_change_type type)
 #endif
 
         pcmbuf_monitor_track_change(true);
+#ifdef TARGET_ARENA_PCM_SIZE
+        /* Ran dry just before the codec finished: a next track that wants
+         * the other playback carving decodes only once this one has played
+         * out, so the watermark would never be reached. Play out what is
+         * left. */
+        start_audio_playback();
+#endif
     }
     else
     {
@@ -798,10 +897,11 @@ static void pcmbuf_pcm_callback(const void **start, size_t *size)
     /*- Process the chunk that just finished -*/
     size_t index = chunk_ridx;
     struct chunkdesc *desc = current_desc;
+    bool track_change = false;
 
     if (desc)
     {
-        bool track_change = index == chunk_transidx;
+        track_change = index == chunk_transidx;
 
         /* If last chunk in the track, notify of track change */
         if (track_change)
@@ -822,12 +922,19 @@ static void pcmbuf_pcm_callback(const void **start, size_t *size)
     }
 
     /*- Process the new one -*/
+#ifdef HAVE_DEVLOG
+    if (index == chunk_widx && !fade_out_complete)
+        dev_pcm_starved(track_change);  /* ran dry: an underrun, or a track's end */
+#endif
     if (index != chunk_widx && !fade_out_complete)
     {
         current_desc = desc = index_chunkdesc(index);
 
         *start = index_buffer(index);
         *size = desc->size;
+#ifdef HAVE_DEVLOG
+        dev_chunks_played++;
+#endif
 
         if (desc->pos_key != 0)
         {
@@ -837,6 +944,27 @@ static void pcmbuf_pcm_callback(const void **start, size_t *size)
         }
     }
 }
+
+#ifdef HAVE_DEVLOG
+/* For a stall dump (dev_shell.c): whether the mixer still takes chunks
+ * (the played count between two dumps), the pending track change, the fade
+ * and the position key the chunks carry */
+void pcmbuf_dev_state(void)
+{
+    dev_log("  pcmbuf: r %lu w %lu trans %ld desc %d played %lu fade %d/%d "
+            "key %u",
+            (unsigned long)chunk_ridx, (unsigned long)chunk_widx,
+            chunk_transidx == INVALID_BUF_INDEX ? -1L : (long)chunk_transidx,
+            current_desc != NULL, dev_chunks_played, (int)fade_state,
+            (int)fade_out_complete, position_key);
+}
+
+/* Chunks handed to the mixer so far (dev_shell.c's stall check) */
+unsigned long pcmbuf_dev_chunks_played(void)
+{
+    return dev_chunks_played;
+}
+#endif
 
 static void pcmbuf_sampr_callback(uint32_t sampr)
 {
@@ -868,6 +996,9 @@ void pcmbuf_play_stop(void)
 
     /* Reset channel */
     mixer_channel_stop(PCM_MIXER_CHAN_PLAYBACK);
+#ifdef HAVE_DEVLOG
+    dev_pcm_stopped();
+#endif
 
     /* Reset buffer */
     init_buffer_state();

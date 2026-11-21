@@ -26,6 +26,10 @@ extern "C"
 {
 #endif
 
+#ifdef ROCKBOX
+#include "config.h"
+#endif
+
 #define MAX_TAG_LENGTH 4 /* includes the \0 */
 #define MAX_TAG_PARAMS 12
 
@@ -103,6 +107,10 @@ enum skin_token_type {
     SKIN_TOKEN_BATTERY_CHARGING,
     SKIN_TOKEN_BATTERY_SLEEPTIME,
     SKIN_TOKEN_USB_INSERTED,
+#if !defined(ROCKBOX) || defined(HAVE_BLUETOOTH)
+    SKIN_TOKEN_BLUETOOTH_STATUS,
+    SKIN_TOKEN_BLUETOOTH_BATTERY,
+#endif
 
     /* Sound */
     SKIN_TOKEN_SOUND_PITCH,
@@ -298,6 +306,12 @@ enum skin_token_type {
     SKIN_TOKEN_HAVE_RDS,
     SKIN_TOKEN_RDS_NAME,
     SKIN_TOKEN_RDS_TEXT,
+#if !defined(ROCKBOX) || defined(HAVE_RDS_EXTENDED)
+    SKIN_TOKEN_RDS_CALL_LETTERS,
+    SKIN_TOKEN_RDS_PTY_NAME,
+    SKIN_TOKEN_RDS_ARTIST,
+    SKIN_TOKEN_RDS_TITLE,
+#endif
 
     /* Skin variables */
     SKIN_TOKEN_VAR_SET,

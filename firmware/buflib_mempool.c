@@ -114,6 +114,14 @@ struct buflib_callbacks buflib_ops_locked = {
 
 #define IS_MOVABLE(a) \
     (!a[BUFLIB_IDX_OPS].ops || a[BUFLIB_IDX_OPS].ops->move_callback)
+#if defined(YP3_SL6801)
+/* Compaction leaves a pinned block where it is too (move_block()). Counted
+ * as movable, a pinned block between two holes made buflib_allocatable()
+ * report their sum, and an allocation of that size failed. */
+#define STAYS_PUT(a) (!IS_MOVABLE(a) || a[BUFLIB_IDX_PIN].pincount > 0)
+#else
+#define STAYS_PUT(a) (!IS_MOVABLE(a))
+#endif
 
 static union buflib_data* find_first_free(struct buflib_context *ctx);
 static union buflib_data* find_block_before(struct buflib_context *ctx,
@@ -677,6 +685,67 @@ buffer_alloc:
     return ctx->handle_table - handle;
 }
 
+#ifdef HAVE_CORE_ALLOC_TOP
+/* Handles the table can still grow by under a block placed at the end */
+#define TOP_HANDLE_ROOM 128
+
+int
+buflib_alloc_top(struct buflib_context *ctx, size_t size,
+                 struct buflib_callbacks *ops)
+{
+    size_t units = (size + sizeof(union buflib_data) - 1) /
+                   sizeof(union buflib_data) + BUFLIB_NUM_FIELDS;
+    union buflib_data *handle = handle_alloc(ctx);
+    if (!handle)
+        return buflib_alloc_ex(ctx, size, ops);
+
+    union buflib_data *block = NULL;
+    /* The space at the end, below the handle table's room to grow */
+    union buflib_data *top = ctx->last_handle - TOP_HANDLE_ROOM;
+    if (top >= ctx->alloc_end && (size_t)(top - ctx->alloc_end) >= units)
+    {
+        block = top - units;
+        if (block > ctx->alloc_end)
+        {
+            ctx->alloc_end->val = -(block - ctx->alloc_end);
+            ctx->compact = false;
+        }
+        ctx->alloc_end = top;
+    }
+    else
+    {
+        /* else the top of the highest hole that holds it */
+        union buflib_data *hole = NULL;
+        for (union buflib_data *b = find_first_free(ctx); b < ctx->alloc_end;
+             b += abs(b->val))
+        {
+            check_block_length(ctx, b);
+            if (b->val < 0 && (size_t)-b->val >= units)
+                hole = b;
+        }
+        if (hole)
+        {
+            size_t left = -hole->val - units;
+            if (left)
+                hole->val = -left;
+            block = hole + left;
+        }
+    }
+    if (!block)
+    {
+        handle_free(ctx, handle);
+        return buflib_alloc_ex(ctx, size, ops);
+    }
+
+    block[BUFLIB_IDX_LEN].val = units;
+    block[BUFLIB_IDX_HANDLE].handle = handle;
+    block[BUFLIB_IDX_OPS].ops = ops;
+    block[BUFLIB_IDX_PIN].pincount = 0;
+    handle->alloc = (char*)&block[BUFLIB_NUM_FIELDS];
+    return ctx->handle_table - handle;
+}
+#endif
+
 static union buflib_data*
 find_first_free(struct buflib_context *ctx)
 {
@@ -806,7 +875,7 @@ buflib_allocatable(struct buflib_context* ctx)
 
         /* an unmovable section resets the count as free space
          * can't be contigous */
-        if (!IS_MOVABLE(block))
+        if (STAYS_PUT(block))
         {
             if (max_free_space < free_space)
                 max_free_space = free_space;
@@ -816,6 +885,13 @@ buflib_allocatable(struct buflib_context* ctx)
 
     /* select the best */
     max_free_space = MAX(max_free_space, free_space);
+#if defined(YP3_SL6801)
+    /* A block in a hole needs its header there too (free_space_at_end()
+     * takes it off). With Bluetooth's pinned blocks at the heap's top the
+     * largest space is a hole, and core_alloc_maximum() failed. */
+    max_free_space = max_free_space > BUFLIB_NUM_FIELDS ?
+                     max_free_space - BUFLIB_NUM_FIELDS : 0;
+#endif
     max_free_space *= sizeof(union buflib_data);
     max_free_space = MAX(max_free_space, free_space_at_end(ctx));
 

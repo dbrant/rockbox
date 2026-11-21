@@ -62,7 +62,7 @@
 #define HAVE_USB_MODE
 #endif
 
-#ifndef HAS_BUTTON_HOLD
+#if !defined(HAS_BUTTON_HOLD) && !defined(HAVE_NO_SOFTLOCK)
 static int selectivesoftlock_callback(int action,
                                       const struct menu_item_ex *this_item,
                                       struct gui_synclist *this_list)
@@ -126,14 +126,22 @@ int mask = global_settings.bt_selective_softlock_actions_mask;
 
 static void tagcache_rebuild_with_splash(void)
 {
+#ifdef TAGCACHE_LOWMEM
+    tagcache_build_now(true);
+#else
     tagcache_rebuild();
     splash(HZ*2, ID2P(LANG_TAGCACHE_FORCE_UPDATE_SPLASH));
+#endif
 }
 
 static void tagcache_update_with_splash(void)
 {
+#ifdef TAGCACHE_LOWMEM
+    tagcache_build_now(false);
+#else
     tagcache_update();
     splash(HZ*2, ID2P(LANG_TAGCACHE_FORCE_UPDATE_SPLASH));
+#endif
 }
 
 static int dirs_to_scan(void)
@@ -159,7 +167,7 @@ MENUITEM_FUNCTION(tc_init, 0, ID2P(LANG_TAGCACHE_FORCE_UPDATE),
 MENUITEM_FUNCTION(tc_update, 0, ID2P(LANG_TAGCACHE_UPDATE),
                   (int(*)(void))tagcache_update_with_splash, NULL, Icon_NOICON);
 MENUITEM_SETTING(runtimedb, &global_settings.runtimedb, NULL);
-
+#ifndef TAGCACHE_LOWMEM
 MENUITEM_FUNCTION(tc_export, 0, ID2P(LANG_TAGCACHE_EXPORT),
                   tagtree_export,
                   NULL, Icon_NOICON);
@@ -167,6 +175,7 @@ MENUITEM_FUNCTION(tc_export, 0, ID2P(LANG_TAGCACHE_EXPORT),
 MENUITEM_FUNCTION(tc_import, 0, ID2P(LANG_TAGCACHE_IMPORT),
                   tagtree_import,
                   NULL, Icon_NOICON);
+#endif
 MENUITEM_FUNCTION(tc_paths, 0, ID2P(LANG_SELECT_DATABASE_DIRS),
                   dirs_to_scan, NULL, Icon_NOICON);
 
@@ -175,7 +184,10 @@ MAKE_MENU(tagcache_menu, ID2P(LANG_TAGCACHE), 0, Icon_NOICON,
                 &tagcache_ram,
 #endif
                 &tagcache_autoupdate, &tc_init, &tc_update, &runtimedb,
-                &tc_export, &tc_import, &tc_paths
+#ifndef TAGCACHE_LOWMEM
+                &tc_export, &tc_import,
+#endif
+                &tc_paths
                 );
 #endif /* HAVE_TAGCACHE */
 /*    TAGCACHE MENU                */
@@ -268,12 +280,18 @@ static int usbcharging_callback(int action,
 }
 MENUITEM_SETTING(usb_charging, &global_settings.usb_charging, usbcharging_callback);
 #endif /* HAVE_USB_CHARGING_ENABLE */
+#ifdef HAVE_CHARGE_LIMIT
+MENUITEM_SETTING(charge_limit, &global_settings.charge_limit, NULL);
+#endif
 MAKE_MENU(battery_menu, ID2P(LANG_BATTERY_MENU), 0, Icon_NOICON,
 #if BATTERY_CAPACITY_INC > 0
             &battery_capacity,
 #endif
 #ifdef HAVE_USB_CHARGING_ENABLE
             &usb_charging,
+#endif
+#ifdef HAVE_CHARGE_LIMIT
+            &charge_limit,
 #endif
          );
 #ifdef HAVE_USB_MODE
@@ -399,7 +417,7 @@ MENUITEM_SETTING(touchpad_deadzone, &global_settings.touchpad_deadzone, NULL);
 MENUITEM_SETTING(shortcuts_replaces_quickscreen, &global_settings.shortcuts_replaces_qs, NULL);
 #endif
 
-#ifndef HAS_BUTTON_HOLD
+#if !defined(HAS_BUTTON_HOLD) && !defined(HAVE_NO_SOFTLOCK)
 
 MENUITEM_SETTING(bt_selective_actions,
                  &global_settings.bt_selective_softlock_actions,
@@ -410,7 +428,7 @@ MENUITEM_FUNCTION(sel_softlock_mask, 0, ID2P(LANG_SETTINGS),
 
 MAKE_MENU(sel_softlock, ID2P(LANG_SOFTLOCK_SELECTIVE),
           NULL, Icon_Menu_setting, &bt_selective_actions, &sel_softlock_mask);
-#endif /* !HAS_BUTTON_HOLD */
+#endif /* !HAS_BUTTON_HOLD && !HAVE_NO_SOFTLOCK */
 
 #if defined(DX50) || defined(DX90)
 MENUITEM_SETTING(governor, &global_settings.governor, NULL);
@@ -434,7 +452,8 @@ MAKE_MENU(usb_menu, ID2P(LANG_USB_MENU), 0, Icon_NOICON,
 
 MAKE_MENU(system_menu, ID2P(LANG_SYSTEM),
           0, Icon_System_menu,
-#if (BATTERY_CAPACITY_INC > 0) || defined(HAVE_USB_CHARGING_ENABLE)
+#if (BATTERY_CAPACITY_INC > 0) || defined(HAVE_USB_CHARGING_ENABLE) || \
+    defined(HAVE_CHARGE_LIMIT)
             &battery_menu,
 #endif
 #if defined(HAVE_DIRCACHE) || defined(HAVE_DISK_STORAGE)
@@ -476,7 +495,7 @@ MAKE_MENU(system_menu, ID2P(LANG_SYSTEM),
 #ifdef HAVE_TOUCHPAD_DEADZONE
             &touchpad_deadzone,
 #endif
-#ifndef HAS_BUTTON_HOLD
+#if !defined(HAS_BUTTON_HOLD) && !defined(HAVE_NO_SOFTLOCK)
             &sel_softlock,
 #endif
 #if defined(USB_ENABLE_HID) || \
@@ -614,7 +633,8 @@ MAKE_MENU(bookmark_settings_menu, ID2P(LANG_BOOKMARK_SETTINGS), 0,
 
 /***********************************/
 /*    AUTORESUME MENU              */
-#ifdef HAVE_TAGCACHE
+/* low memory: resume positions are not recorded (no runtime statistics) */
+#if defined(HAVE_TAGCACHE) && !defined(TAGCACHE_LOWMEM)
 
 static int autoresume_callback(int action,
                                const struct menu_item_ex *this_item,
@@ -675,6 +695,7 @@ MAKE_MENU(autoresume_menu, ID2P(LANG_AUTORESUME),
 
 /***********************************/
 /*    VOICE MENU                   */
+#ifndef HAVE_NO_VOICE   /* voice compiled out: its settings would do nothing */
 static int talk_callback(int action,
                          const struct menu_item_ex *this_item,
                          struct gui_synclist *this_list);
@@ -719,6 +740,7 @@ MAKE_MENU(voice_settings_menu, ID2P(LANG_VOICE), 0, Icon_Voice,
           &talk_menu_item, &talk_dir_item, &talk_dir_clip_item,
           &talk_file_item, &talk_file_clip_item, &talk_filetype_item,
           &talk_battery_level_item, &talk_mixer_amp_item);
+#endif /* !HAVE_NO_VOICE */
 /*    VOICE MENU                   */
 /***********************************/
 
@@ -832,10 +854,12 @@ MAKE_MENU(wps_settings, ID2P(LANG_WPS), 0, Icon_Playback_menu
 /***********************************/
 /*    SETTINGS MENU                */
 
+#ifndef HAVE_BUILTIN_LANGUAGE_ONLY
 static struct browse_folder_info langs = { LANG_DIR, SHOW_LNG };
 
 MENUITEM_FUNCTION_W_PARAM(browse_langs, 0, ID2P(LANG_LANGUAGE),
                           browse_folder, (void*)&langs, NULL, Icon_Language);
+#endif
 
 MAKE_MENU(settings_menu_item, ID2P(LANG_GENERAL_SETTINGS), 0,
           Icon_General_settings_menu,
@@ -847,10 +871,15 @@ MAKE_MENU(settings_menu_item, ID2P(LANG_GENERAL_SETTINGS), 0,
           &display_menu, &system_menu,
           &startup_shutdown_menu,
           &bookmark_settings_menu,
-#ifdef HAVE_TAGCACHE
+#if defined(HAVE_TAGCACHE) && !defined(TAGCACHE_LOWMEM)
           &autoresume_menu,
 #endif
-          &browse_langs, &voice_settings_menu,
+#ifndef HAVE_BUILTIN_LANGUAGE_ONLY
+          &browse_langs,
+#endif
+#ifndef HAVE_NO_VOICE
+          &voice_settings_menu,
+#endif
           );
 /*    SETTINGS MENU                */
 /***********************************/

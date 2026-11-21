@@ -180,7 +180,7 @@ int plugin_open(const char *plugin, const char *parameter);
  * when this happens please take the opportunity to sort in
  * any new functions "waiting" at the end of the list.
  */
-#define PLUGIN_API_VERSION 285
+#define PLUGIN_API_VERSION 286
 
 /* 239 Marks the removal of ARCHOS HWCODEC and CHARCELL */
 
@@ -995,6 +995,11 @@ struct plugin_api {
 #ifdef ROCKBOX_HAS_LOGF
     void (*logf)(const char *fmt, ...) ATTRIBUTE_PRINTF(1, 2);
 #endif
+#ifdef HAVE_DEVLOG
+    /* the dev build's message list (apps/dev_shell.c; yp3dev/torture.py) */
+    void (*dev_msg)(const char *kind, const char *fmt, ...)
+        ATTRIBUTE_PRINTF(2, 3);
+#endif
     void (*codec_thread_do_callback)(void (*fn)(void),
                                      unsigned int *audio_thread_id);
     int (*codec_load_file)(const char* codec, struct codec_api *api);
@@ -1054,6 +1059,9 @@ struct plugin_api {
 
     /* new stuff at the end, sort into place next time
        the API gets incompatible */
+#ifdef HAVE_BLUETOOTH
+    int (*pcm_sink_latency_ms)(void);
+#endif
 };
 
 /* plugin header */
@@ -1073,7 +1081,7 @@ extern unsigned char plugin_end_addr[];
         const struct plugin_header __header \
         __attribute__ ((section (".header")))= { \
         { PLUGIN_MAGIC, TARGET_ID, PLUGIN_API_VERSION, \
-          plugin_start_addr, plugin_end_addr, }, \
+          plugin_start_addr, plugin_end_addr LC_HEADER_BUILD_ID }, \
         plugin__start, &rb, sizeof(struct plugin_api) };
 #else /* PLATFORM_HOSTED */
 #define PLUGIN_HEADER \
@@ -1093,6 +1101,10 @@ extern unsigned char plugin_end_addr[];
 #define str(x) language_strings[x]
 
 int plugin_load(const char* plugin, const void* parameter);
+#ifdef HAVE_DEVLOG
+/* the dev shell's play and playlist refuse while it does */
+bool plugin_holds_audio_buffer(void);
+#endif
 
 /* defined by the plugin */
 extern const struct plugin_api *rb;

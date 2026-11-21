@@ -39,6 +39,9 @@
 #include "viewport.h"
 #include "appevents.h"
 #include "statusbar-skinned.h"
+#ifdef HAVE_DEVLOG
+#include "dev_shell.h"
+#endif
 
 /* The minimum number of pending button events in queue before starting
  * to limit list drawing interval.
@@ -239,6 +242,9 @@ void gui_synclist_draw(struct gui_synclist *gui_list)
             list_draw(&screens[i], gui_list);
         skin_mark_dirty(i);
     }
+#ifdef HAVE_DEVLOG
+    dev_list_drawn(gui_list);
+#endif
 }
 
 /* sets up the list so the selection is shown correctly on the screen */

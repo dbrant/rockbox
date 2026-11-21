@@ -28,6 +28,11 @@ void pcmbuf_write_complete(int count, unsigned long elapsed, off_t offset);
 
 /* Init */
 size_t pcmbuf_size_reqd(void);
+#ifdef TARGET_ARENA_PCM_SIZE
+void pcmbuf_set_arena_ring(bool arena);
+size_t pcmbuf_heap_allocation_size(void);
+#endif
+size_t pcmbuf_allocation_size_reqd(void);
 size_t pcmbuf_init(void *bufend);
 
 /* Playback */

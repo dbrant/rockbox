@@ -42,6 +42,7 @@
 #include "lang.h"
 
 #include "playlist_viewer.h"
+#include "core_alloc.h"
 #include "playlist_catalog.h"
 #include "icon.h"
 #include "list.h"
@@ -60,7 +61,11 @@
 #endif
 
 /* Maximum number of tracks we can have loaded at one time                   */
+#if MEMORYSIZE < 2
+#define MAX_PLAYLIST_ENTRIES 64 /* window around the cursor; ~10 rows show */
+#else
 #define MAX_PLAYLIST_ENTRIES 200
+#endif
 
 /* Maximum file name length in name buffer                                   */
 #define MAX_NAME_SZ (sizeof ((struct playlist_track_info *)0)->filename)
@@ -394,6 +399,37 @@ static bool update_playlist(bool force)
 }
 
 /* Initialize the playlist viewer. */
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+/* The plugin buffer is also the codec's arena, and starting playback from
+ * the viewer loads a codec over it: the viewer uses a small heap block
+ * instead (a shorter name window, no view_text plugin). */
+#define VIEWER_HEAP_NAMES (16 * 1024)
+#define VIEWER_HEAP_MARGIN (4 * 1024)
+static int viewer_heap_handle;
+
+static void viewer_heap_free(void)
+{
+    if (viewer_heap_handle > 0)
+        viewer_heap_handle = core_free(viewer_heap_handle);
+}
+
+static char *viewer_heap_alloc(size_t want, size_t *size)
+{
+    viewer_heap_free();
+    size_t avail = core_allocatable();
+    *size = avail > VIEWER_HEAP_MARGIN ? MIN(want, avail - VIEWER_HEAP_MARGIN) : 0;
+    if (*size == 0)
+        return NULL;
+    viewer_heap_handle = core_alloc_ex(*size, &buflib_ops_locked);
+    if (viewer_heap_handle <= 0)
+    {
+        viewer_heap_handle = 0;
+        return NULL;
+    }
+    return core_get_data(viewer_heap_handle);
+}
+#endif
+
 static bool playlist_viewer_init(struct playlist_viewer * viewer,
                                  const char* dir, const char* file,
                                  bool reload, int *recent_selection)
@@ -425,7 +461,11 @@ static bool playlist_viewer_init(struct playlist_viewer * viewer,
 
     size_t id3_size = ALIGN_UP(sizeof(*viewer->id3), 4);
 
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+    buffer = viewer_heap_alloc(id3_size + VIEWER_HEAP_NAMES, &buffer_size);
+#else
     buffer = plugin_get_buffer(&buffer_size);
+#endif
     if (!buffer || buffer_size <= MAX_TRACK_INFO + id3_size)
         return false;
 
@@ -619,6 +659,9 @@ static void close_playlist_viewer(void)
         playlist_close(viewer.playlist);
     }
     viewer.is_open = false;
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+    viewer_heap_free();
+#endif
 }
 
 #if defined(HAVE_HOTKEY) || defined(HAVE_TAGCACHE)
@@ -1102,6 +1145,12 @@ enum playlist_viewer_result playlist_viewer_ex(const char* filename,
                     {
                         if (global_settings.playlist_shuffle)
                             start_index = playlist_shuffle(current_tick, start_index);
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+                        /* The viewer exits next: give its block back before
+                         * playback sizes its buffer (an AAC start found no
+                         * room beside it and sat silent) */
+                        viewer_heap_free();
+#endif
                         playlist_start(start_index, 0, 0);
 
                         if (viewer.initial_selection)
@@ -1257,7 +1306,18 @@ static int say_search_item(int selected_item, void *data)
     return 0;
 }
 
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+static bool search_playlist_in(void);
 bool search_playlist(void)
+{
+    bool ret = search_playlist_in();
+    viewer_heap_free();
+    return ret;
+}
+static bool search_playlist_in(void)
+#else
+bool search_playlist(void)
+#endif
 {
     char search_str[32] = "";
     bool ret = false, exit = false;

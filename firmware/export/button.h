@@ -100,6 +100,37 @@ int button_apply_acceleration(const unsigned int data);
 #define BUTTON_MULTIMEDIA   0x10000000
 #define BUTTON_REDRAW       0x20000000
 
+#ifdef HAVE_BLUETOOTH_HID
+/* A game controller's buttons (Bluetooth HID, firmware/bluetooth/hid.c),
+ * named by place as on most controllers: A bottom, B right, X left, Y top
+ * (DualShock 4: cross, circle, square, triangle). A keyboard's keys map
+ * onto them too. Its d-pad and left stick hold the target's own directions
+ * (BUTTON_PAD_UP..RIGHT). Keymaps and plugins act on them under
+ * HAVE_BLUETOOTH_HID; a target whose buttons reach these bits moves them
+ * with BUTTON_PAD_SHIFT. */
+#ifndef BUTTON_PAD_SHIFT
+#define BUTTON_PAD_SHIFT    13
+#endif
+#define BUTTON_PAD_A        (0x001 << BUTTON_PAD_SHIFT) /* Enter, Space */
+#define BUTTON_PAD_B        (0x002 << BUTTON_PAD_SHIFT) /* Esc, Backspace */
+#define BUTTON_PAD_X        (0x004 << BUTTON_PAD_SHIFT)
+#define BUTTON_PAD_Y        (0x008 << BUTTON_PAD_SHIFT)
+#define BUTTON_PAD_L1       (0x010 << BUTTON_PAD_SHIFT) /* Page Up */
+#define BUTTON_PAD_R1       (0x020 << BUTTON_PAD_SHIFT) /* Page Down */
+#define BUTTON_PAD_L2       (0x040 << BUTTON_PAD_SHIFT)
+#define BUTTON_PAD_R2       (0x080 << BUTTON_PAD_SHIFT)
+#define BUTTON_PAD_MENU     (0x100 << BUTTON_PAD_SHIFT) /* Options; menu key */
+#define BUTTON_PAD_VIEW     (0x200 << BUTTON_PAD_SHIFT) /* Share; Tab */
+#define BUTTON_PAD_HOME     (0x400 << BUTTON_PAD_SHIFT) /* PS; Home */
+#define BUTTON_PAD_ALL      (0x7ff << BUTTON_PAD_SHIFT)
+#ifndef BUTTON_PAD_UP
+#define BUTTON_PAD_UP       BUTTON_UP
+#define BUTTON_PAD_DOWN     BUTTON_DOWN
+#define BUTTON_PAD_LEFT     BUTTON_LEFT
+#define BUTTON_PAD_RIGHT    BUTTON_RIGHT
+#endif
+#endif /* HAVE_BLUETOOTH_HID */
+
 #define BUTTON_MULTIMEDIA_PLAYPAUSE (BUTTON_MULTIMEDIA|0x01)
 #define BUTTON_MULTIMEDIA_STOP      (BUTTON_MULTIMEDIA|0x02)
 #define BUTTON_MULTIMEDIA_PREV      (BUTTON_MULTIMEDIA|0x04)

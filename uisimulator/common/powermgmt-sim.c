@@ -109,6 +109,10 @@ unsigned short percent_to_volt_discharge[11] =
 { 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100, 4200, 4300 };
 unsigned short percent_to_volt_charge[11] =
 { 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100, 4200, 4300  };
+#ifdef HAVE_BATTERY_REST_CURVE
+unsigned short percent_to_volt_rest[11] =
+{ 3300, 3400, 3500, 3600, 3700, 3800, 3900, 4000, 4100, 4200, 4300  };
+#endif
 
 #if CONFIG_BATTERY_MEASURE & VOLTAGE_MEASURE
 int _battery_voltage(void)
@@ -165,6 +169,13 @@ bool charging_state(void)
 void accessory_supply_set(bool enable)
 {
     (void)enable;
+}
+#endif
+
+#ifdef HAVE_CHARGE_LIMIT
+void set_charge_limit(int percent)
+{
+    (void)percent;
 }
 #endif
 

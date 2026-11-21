@@ -232,6 +232,14 @@ static int compare(const void* p1, const void* p2)
     struct entry* e2 = (struct entry*)p2;
     int criteria;
 
+#ifdef HAVE_FS_SCAN_YIELD
+    /* Sorting a big directory holds the CPU longer than the PCM buffer
+       lasts; the tree cache is locked while loading, so entries stay put. */
+    static unsigned int calls;
+    if (++calls % 32 == 0)
+        yield();
+#endif
+
     if (cmp_data.sort_dir == SORT_AS_FILE)
     {   /* treat as two files */
         criteria = cmp_data.sort_file;
@@ -680,6 +688,14 @@ int ft_enter(struct tree_context* c)
                 splash(0, ID2P(LANG_WAIT));
                 if (!settings_load_config(buf,true))
                     break;
+#ifdef TARGET_AUDIO_BUFFER_CAP
+                /* a theme's fonts and images come out of the playback heap */
+                if (audio_low_memory())
+                {
+                    splash(HZ*4, ID2P(LANG_THEME_LOW_MEMORY));
+                    break;
+                }
+#endif
                 splash(HZ, ID2P(LANG_SETTINGS_LOADED));
                 break;
 

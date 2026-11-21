@@ -182,6 +182,12 @@ bool skin_backdrops_preload(void)
             {
                 filename = global_settings.backdrop_file;
             }
+#ifdef HAVE_NO_BACKDROP_FILES
+            /* image backdrops are not loaded (target RAM); the %VB
+               draw-on-backdrop buffer still is */
+            if (strcmp(filename, BACKDROP_BUFFERNAME))
+                filename = "-";
+#endif
             if (*filename && *filename != '-')
             {
                 backdrops[i].buflib_handle = core_alloc_ex(buf_size, &buflib_ops);
@@ -309,6 +315,9 @@ void skin_backdrop_unload(int backdrop_id)
 
 void skin_backdrop_load_setting(void)
 {
+#ifdef HAVE_NO_BACKDROP_FILES
+    return;     /* image backdrops are not loaded (target RAM) */
+#endif
     int i;
     for(i=0;i<SKINNABLE_SCREENS_COUNT*NB_SCREENS;i++)
     {

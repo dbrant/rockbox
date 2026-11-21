@@ -89,6 +89,10 @@ static const struct tag_info legal_tags[] =
     TAG(SKIN_TOKEN_BATTERY_CHARGING,      "bc", "", SKIN_REFRESH_DYNAMIC),
     TAG(SKIN_TOKEN_BATTERY_CHARGER_CONNECTED, "bp", "", SKIN_REFRESH_DYNAMIC),
     TAG(SKIN_TOKEN_USB_INSERTED,          "bu", "", SKIN_REFRESH_DYNAMIC),
+#if !defined(ROCKBOX) || defined(HAVE_BLUETOOTH)
+    TAG(SKIN_TOKEN_BLUETOOTH_STATUS,      "Bt", "", SKIN_REFRESH_DYNAMIC),
+    TAG(SKIN_TOKEN_BLUETOOTH_BATTERY,     "Bb", "", SKIN_REFRESH_DYNAMIC),
+#endif
 
     TAG(SKIN_TOKEN_RTC_PRESENT,           "cc", "", FEATURE_TAG),
     TAG(SKIN_TOKEN_RTC_DAY_OF_MONTH,      "cd", "", SKIN_RTC_REFRESH),
@@ -192,6 +196,12 @@ static const struct tag_info legal_tags[] =
     TAG(SKIN_TOKEN_HAVE_RDS,              "tx", "", SKIN_REFRESH_STATIC),
     TAG(SKIN_TOKEN_RDS_NAME,              "ty", "", SKIN_REFRESH_DYNAMIC),
     TAG(SKIN_TOKEN_RDS_TEXT,              "tz", "", SKIN_REFRESH_DYNAMIC),
+#if !defined(ROCKBOX) || defined(HAVE_RDS_EXTENDED)
+    TAG(SKIN_TOKEN_RDS_CALL_LETTERS,      "tc", "", SKIN_REFRESH_DYNAMIC),
+    TAG(SKIN_TOKEN_RDS_PTY_NAME,          "tg", "", SKIN_REFRESH_DYNAMIC),
+    TAG(SKIN_TOKEN_RDS_ARTIST,            "tw", "", SKIN_REFRESH_DYNAMIC),
+    TAG(SKIN_TOKEN_RDS_TITLE,             "ti", "", SKIN_REFRESH_DYNAMIC),
+#endif
 
     TAG(SKIN_TOKEN_SUBLINE_SCROLL,        "s", "", SKIN_REFRESH_SCROLL),
     TAG(SKIN_TOKEN_SUBLINE_TIMEOUT,       "t"  , "D|d", 0),

@@ -68,6 +68,12 @@ enum RADIO_RDS_INFO
     RADIO_RDS_TEXT,         /* dst: array of char, dstsize: buffer size */
     RADIO_RDS_PROGRAM_INFO, /* dst: uint16_t *, dstsize: >= sizeof(uint16_t) */
     RADIO_RDS_CURRENT_TIME, /* dst: time_t *, dstsize: >= sizeof(time_t) */
+#ifdef HAVE_RDS_EXTENDED
+    RADIO_RDS_PTY_NAME,     /* dst: array of char, dstsize: buffer size */
+    RADIO_RDS_CALL_LETTERS, /* dst: array of char, dstsize: buffer size */
+    RADIO_RDS_ARTIST,       /* dst: array of char, dstsize: buffer size */
+    RADIO_RDS_TITLE,        /* dst: array of char, dstsize: buffer size */
+#endif
 
     /* Put new general-purpose readback values above this line */
     __RADIO_GET_RDS_INFO_STANDARD_LAST

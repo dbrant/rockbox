@@ -1019,6 +1019,13 @@ bool recording_screen(bool no_source)
 #endif
 
     audio_init_recording();
+#ifdef PCMREC_LOWMEM
+    if (!audio_recording_ready())
+    {
+        splash(HZ*2, ID2P(LANG_REC_NO_MEMORY));
+        goto rec_abort;
+    }
+#endif
     sound_set_volume(global_status.volume);
 
 #if CONFIG_RTC == 0
@@ -1533,6 +1540,11 @@ bool recording_screen(bool no_source)
                 default_event_handler(button);
                 done = true;
                 break;
+#ifdef HAVE_DEVLOG
+            case SYS_DEV_RUN:   /* dev shell requests and UI pings */
+                default_event_handler(button);
+                break;
+#endif
 
             case SYS_USB_CONNECTED:
                 /* Only accept USB connection when not recording */

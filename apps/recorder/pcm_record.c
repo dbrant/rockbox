@@ -80,7 +80,25 @@
  * Fractions should be left without parentheses so the multiplier is
  * multiplied by the numerator first.
  */
-#if MEMORYSIZE <= 2
+#ifdef PCMREC_LOWMEM
+/* e.g. 512 KiB SRAM (YP3): 48 KiB PCM ring and a small stream buffer; the rest of the
+ * allocation buffers encoded chunks. The DMA side keeps chunks in hand, so
+ * about 40 KiB (~230 ms at 44.1 kHz stereo) can wait for the encoder:
+ * WavPack takes 5000-sample (20 KB) blocks, and with 8 chunks it overflowed
+ * once per file. */
+#define PCM_NUM_CHUNKS         12
+/* Smallest encoded-data buffer recording starts with (upstream: 64 KiB of
+ * a multi-MB audio buffer). Here the whole recording allocation is the free
+ * heap, ~120 KiB at best and ~40 KiB less with a theme like cabbiev2; the
+ * PCM ring above already absorbs ~230 ms of SD write latency. */
+#define ENC_BUFFER_MIN     (32*1024)
+#define PCM_CHUNK_SAMP       1024
+#define PCM_BOOST_SECONDS       1/8
+#define PANIC_SECONDS           1/8
+#define FLUSH_SECONDS           1/4
+#define FLUSH_MON_INTERVAL      1/16
+#define STREAM_BUF_SIZE      8192
+#elif MEMORYSIZE <= 2
 #define PCM_NUM_CHUNKS         56
 #define PCM_CHUNK_SAMP       1024
 #define PCM_BOOST_SECONDS       1/2
@@ -97,6 +115,9 @@
 #endif /* MEMORYSIZE */
 
 /* Default values if not overridden above */
+#ifndef ENC_BUFFER_MIN
+#define ENC_BUFFER_MIN     (64*1024)
+#endif
 #ifndef PCM_NUM_CHUNKS
 #define PCM_NUM_CHUNKS        256
 #endif
@@ -529,6 +550,10 @@ static void pcm_start_recording(void)
                     pcmbuf_ptr(pcm_widx), PCM_CHUNK_SIZE);
 }
 
+/* Smallest recording allocation init_rec_buffers() accepts */
+#define REC_BUFFER_MIN (PCM_BUF_SIZE + STREAM_BUF_SIZE + \
+                        CHUNK_FILE_COUNT(MAX_PATH)*ENC_HDR_SIZE + ENC_BUFFER_MIN)
+
 /* Initialize the various recording buffers */
 static void init_rec_buffers(void)
 {
@@ -537,6 +562,8 @@ static void init_rec_buffers(void)
     size_t size = rec_buffer_size;
 
     /* PCMBUF */
+    if (size < REC_BUFFER_MIN)
+        panicf("rec buffer too small: %lu", (unsigned long)size);
     pcm_buffer = CACHEALIGN_UP(buf); /* Line align */
     size -= pcm_buffer + PCM_BUF_SIZE - buf;
     buf = pcm_buffer + PCM_BUF_SIZE;
@@ -952,6 +979,8 @@ unsigned long pcm_rec_sample_rate(void)
 #endif
 
 
+static int pcmrec_handle;
+
 /** audio_* group **/
 
 /* Initializes recording - call before calling any other recording function */
@@ -960,6 +989,14 @@ void audio_init_recording(void)
     LOGFQUEUE("audio >| pcmrec Q_AUDIO_INIT_RECORDING");
     audio_queue_send(Q_AUDIO_INIT_RECORDING, 1);
 }
+
+#ifdef PCMREC_LOWMEM
+/* After audio_init_recording(): whether it got its buffer */
+bool audio_recording_ready(void)
+{
+    return pcmrec_handle > 0;
+}
+#endif
 
 /* Closes recording - call audio_stop_recording first or risk data loss */
 void audio_close_recording(void)
@@ -1264,6 +1301,12 @@ static void finish_stream(bool stopping)
     size_t threshold = stopping ? 1 : enc_buflen - ENCBUF_MIN_SPLIT_MARGIN;
     enum record_state state = REC_STATE_MONITOR;
     size_t need = 1;
+#if CONFIG_CPU == SL6801
+    /* Stopping waits for the encoder to take all PCM; one that stopped
+       taking it never empties the ring: give up after 2 s without progress */
+    size_t stall_ridx = pcm_ridx;
+    long stall_tick = current_tick + 2*HZ;
+#endif
 
     while (1)
     {
@@ -1301,7 +1344,22 @@ static void finish_stream(bool stopping)
             if (!need || encbuf_used() >= threshold)
                 state = REC_STATE_IDLE; /* Start flush */
             else
+            {
+#if CONFIG_CPU == SL6801
+                if (stopping && pcm_ridx != stall_ridx)
+                {
+                    stall_ridx = pcm_ridx;
+                    stall_tick = current_tick + 2*HZ;
+                }
+                else if (stopping && TIME_AFTER(current_tick, stall_tick))
+                {
+                    logf("finish_stream: encoder stalled");
+                    pcm_buffer_empty = true; /* drop the rest */
+                    continue;
+                }
+#endif
                 sleep(HZ/10); /* Don't flood with pings */
+            }
 
             continue;
         }
@@ -1400,7 +1458,6 @@ static void tally_prerecord_data(void)
 
 /** Event handlers for recording thread **/
 
-static int pcmrec_handle;
 /* Q_AUDIO_INIT_RECORDING */
 static void on_init_recording(void)
 {
@@ -1408,6 +1465,21 @@ static void on_init_recording(void)
     /* FIXME: This buffer should play nicer and be shrinkable/movable */
     talk_buffer_set_policy(TALK_BUFFER_LOOSE);
     pcmrec_handle = core_alloc_maximum(&rec_buffer_size, &buflib_ops_locked);
+#ifdef PCMREC_LOWMEM
+    /* A heavy theme can leave less heap than recording needs: back out
+     * and let the caller refuse (audio_recording_ready()) instead of
+     * panicking (init_rec_buffers() may lose up to a cache line) */
+    if (pcmrec_handle > 0 &&
+        rec_buffer_size < REC_BUFFER_MIN + CACHEALIGN_UP(1))
+        pcmrec_handle = core_free(pcmrec_handle);
+    if (pcmrec_handle <= 0)
+    {
+        pcmrec_handle = 0;
+        talk_buffer_set_policy(TALK_BUFFER_DEFAULT);
+        send_event(RECORDING_EVENT_STOP, NULL);
+        return;
+    }
+#endif
     if (pcmrec_handle <= 0)
     /* someone is abusing core_alloc_maximum(). Fix this evil guy instead of
      * trying to handle OOM without hope */
@@ -1464,10 +1536,21 @@ static void on_recording_options(struct audio_recording_options *options)
     int afmt = rec_format_afmt[options->enc_config.rec_format];
     bool enc_load = true;
 
+#if CONFIG_CPU == SL6801
+    int loaded = codec_loaded();
+    if (loaded != AFMT_UNKNOWN)
+    {
+        /* What is loaded, not what was last configured: after playback
+           a decoder can still be loaded with enc_config left matching. */
+        if ((loaded & CODEC_TYPE_MASK) != CODEC_TYPE_ENCODER ||
+            get_audio_base_codec_type(loaded & CODEC_AFMT_MASK) !=
+            get_audio_base_codec_type(afmt))
+#else
     if (codec_loaded() != AFMT_UNKNOWN)
     {
         if (get_audio_base_codec_type(enc_config.afmt) !=
             get_audio_base_codec_type(afmt))
+#endif
         {
             /* New format, new encoder; unload this one */
             codec_unload();
@@ -1697,6 +1780,17 @@ void audio_recording_handler(struct queue_event *ev)
 
     LOGFQUEUE("record < Q_AUDIO_INIT_RECORDING");
     on_init_recording();
+#ifdef PCMREC_LOWMEM
+    if (pcmrec_handle <= 0)
+    {
+        /* no buffer: stay with playback. Consume the event: audio_thread()
+         * re-dispatches ev after this returns, and a left-over
+         * Q_AUDIO_INIT_RECORDING re-entered here forever (without
+         * replying to audio_init_recording()'s queue_send) */
+        ev->id = Q_NULL;
+        return;
+    }
+#endif
 
     while (1)
     {
@@ -1903,6 +1997,20 @@ static struct enc_chunk_data * enc_encbuf_get_buffer(size_t need)
             avail = encbuf_free();
             continue;
         }
+#ifdef PCMREC_LOWMEM
+        else if (encbuf_empty() && need + ENCBUF_MIN_SPLIT_MARGIN < enc_buflen)
+        {
+            /* The small buffer here holds less than two of the largest
+               requests (WavPack stereo: 22 KB): drained empty at an index
+               where the request neither fits before the end nor may wrap
+               (enc_ridx too low), it would wait forever. Empty, it can
+               simply restart at 0. */
+            encbuf_widx_advance(0, 0);
+            enc_ridx = 0;
+            avail = encbuf_free();
+            continue;
+        }
+#endif
         else if (avail == enc_buflen)
         {
             /* Empty but request larger than any possible space */

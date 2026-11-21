@@ -39,6 +39,9 @@
 #include "splash.h"
 #include "settings.h"
 #include "misc.h"
+#ifdef HAVE_DEVLOG
+#include "devlog.h"     /* dead keys: log presses eaten below */
+#endif
 
 #ifdef HAVE_TOUCHSCREEN
 #include "statusbar-skinned.h"
@@ -352,6 +355,10 @@ static inline bool action_poll_button(action_last_t *last, action_cur_t *cur)
             last->wait_for_release = false;
             last->button = *button;
         }
+#ifdef HAVE_DEVLOG
+        else if (!(*button & BUTTON_REPEAT)) /* TODO(cleanup): dead keys */
+            dev_log("action: %x eaten (wait for release)", *button);
+#endif
 
         *button = ACTION_NONE;
     }
@@ -376,6 +383,11 @@ static inline bool action_poll_button(action_last_t *last, action_cur_t *cur)
             last->button = *button;
             last->action = ACTION_NONE;
         }
+#ifdef HAVE_DEVLOG
+        else if (!(*button & BUTTON_REPEAT)) /* TODO(cleanup): dead keys */
+            dev_log("action: %x eaten (context %x -> %x, last %x)",
+                        *button, last->context, cur->context, last->button);
+#endif
 
         *button = ACTION_NONE; /* "safest" return value */
     }
@@ -622,6 +634,10 @@ static inline int action_code_worker(action_last_t *last,
     return ret;
 }
 
+#ifdef HAVE_BLUETOOTH_HID
+const struct button_mapping *get_pad_mapping(int context);  /* keymap-pad.c */
+#endif
+
 /***************************************************************************
 * get_next_context returns the next CONTEXT to be searched for action_code
 * by action_code_lookup(); if needed it first continues incrementing till
@@ -711,6 +727,13 @@ static inline void action_code_lookup(action_last_t *last, action_cur_t *cur)
         {
             cur->items = cur->get_context_map(context);
         }
+#ifdef HAVE_BLUETOOTH_HID
+        else if (cur->button & BUTTON_PAD_ALL)
+        {
+            /* a game controller's buttons: alike on every target */
+            cur->items = get_pad_mapping(context);
+        }
+#endif
         else
         {
             cur->items = get_context_mapping(context);

@@ -77,6 +77,11 @@
 #include "metadata.h"
 #include "tagcache.h"
 #include "yesno.h"
+#ifdef TAGCACHE_LOWMEM
+#include "splash.h"
+#include "action.h"
+#include "audio.h"
+#endif
 #include "core_alloc.h"
 #include "crc32.h"
 #include "misc.h"
@@ -109,7 +114,11 @@
 #define POS_HISTORY_COUNT 4
 
 /* How much to pre-load entries while committing to prevent seeking. */
+#ifdef TAGCACHE_LOWMEM
+#define IDX_BUF_DEPTH 16
+#else
 #define IDX_BUF_DEPTH 64
+#endif
 
 /* Tag Cache Header version 'TCHxx'. Increment when changing internal structures. */
 #define TAGCACHE_MAGIC  0x54434810
@@ -176,7 +185,15 @@ static void db_log(const char *prefix, const char *msg);
 #ifndef __PCTOOL__
 /* Tag Cache thread. */
 static struct event_queue tagcache_queue SHAREDBSS_ATTR;
+#ifdef TAGCACHE_LOWMEM
+static volatile unsigned int builds_done; /* tagcache_build_now() */
+static volatile bool scan_cancelled;      /* Back in tagcache_build_now() */
+#endif
+#ifdef TAGCACHE_LOWMEM
+static long tagcache_stack[(DEFAULT_STACK_SIZE + 0x1400)/sizeof(long)];
+#else
 static long tagcache_stack[(DEFAULT_STACK_SIZE + 0x4000)/sizeof(long)];
+#endif
 static const char tagcache_thread_name[] = "tagcache";
 #endif
 
@@ -268,6 +285,9 @@ enum tagcache_queue {
     Q_IMPORT_CHANGELOG,
     Q_UPDATE,
     Q_REBUILD,
+#ifdef TAGCACHE_LOWMEM
+    Q_RUNTIME_STATS,
+#endif
 
     /* Internal tagcache command queue. */
     CMD_UPDATE_MASTER_HEADER,
@@ -3373,6 +3393,9 @@ static bool commit(void)
 #ifdef HAVE_DIRCACHE
     bool dircache_buffer_stolen = false;
 #endif
+#ifdef TAGCACHE_LOWMEM
+    bool lowmem_tempbuf = false;
+#endif
 #ifdef HAVE_TC_RAMCACHE
     bool ramcache_buffer_stolen = false;
 #endif
@@ -3444,6 +3467,15 @@ static bool commit(void)
         allocate_tempbuf();
     }
 #endif /* HAVE_DIRCACHE */
+#ifdef TAGCACHE_LOWMEM
+    /* No dircache to steal from: borrow free buflib for the commit
+     * (tagcache_build_now() stops playback first). */
+    if (tempbuf_size == 0)
+    {
+        allocate_tempbuf();
+        lowmem_tempbuf = true;
+    }
+#endif
 
 #ifdef HAVE_TC_RAMCACHE
     if (tempbuf_size == 0 && tc_stat.ramcache_allocated > 0)
@@ -3577,6 +3609,10 @@ commit_error:
         dircache_resume();
     }
 #endif /* HAVE_DIRCACHE */
+#ifdef TAGCACHE_LOWMEM
+    if (lowmem_tempbuf)
+        free_tempbuf();
+#endif
 
     return rc;
 }
@@ -3644,7 +3680,11 @@ static void command_queue_sync_callback(void)
     mutex_lock(&command_queue_mutex);
 
     if ( (masterfd = open_master_fd(&myhdr, true)) < 0)
+#ifdef TAGCACHE_LOWMEM
+        goto discard;   /* don't return with the mutex held */
+#else
         return;
+#endif
 
     while (command_queue_ridx != command_queue_widx)
     {
@@ -3659,7 +3699,11 @@ static void command_queue_sync_callback(void)
 
                 /* Re-open the masterfd. */
                 if ( (masterfd = open_master_fd(&myhdr, true)) < 0)
+#ifdef TAGCACHE_LOWMEM
+                    goto discard;
+#else
                     return;
+#endif
 
                 break;
             }
@@ -3676,6 +3720,13 @@ static void command_queue_sync_callback(void)
 
     close(masterfd);
 
+#ifdef TAGCACHE_LOWMEM
+    if (0)
+    {
+discard:    /* database gone or unreadable: drop the queued updates */
+        command_queue_ridx = command_queue_widx;
+    }
+#endif
     tc_stat.queue_length = 0;
     mutex_unlock(&command_queue_mutex);
 }
@@ -3746,6 +3797,55 @@ void tagcache_update_numeric(int idx_id, int tag, long data)
 {
     queue_command(CMD_UPDATE_NUMERIC, idx_id, tag, data);
 }
+
+#ifdef TAGCACHE_LOWMEM
+/* Runtime statistics without a RAM cache: finding a track in the disk
+ * database scans the filename index on the card, too long and too deep for
+ * the audio thread that sends PLAYBACK_EVENT_TRACK_FINISH. The event only
+ * records the finished track here; the tagcache thread looks it up, reads
+ * its counters and writes them back. One track at a time: another one
+ * finishing meanwhile (rare: each must have played 15 s) is not counted. */
+static struct
+{
+    char path[MAX_PATH];
+    long played_ms;
+    volatile bool pending;
+} runtime_stats;
+
+void tagcache_record_runtime_stats(const char *path, long played_ms)
+{
+    if (runtime_stats.pending || !tc_stat.ready)
+        return;
+    strmemccpy(runtime_stats.path, path, sizeof runtime_stats.path);
+    runtime_stats.played_ms = played_ms;
+    runtime_stats.pending = true;
+    queue_post(&tagcache_queue, Q_RUNTIME_STATS, 0);
+}
+
+/* On the tagcache thread (the playback threads keep running: the card
+ * driver yields while it waits) */
+static void update_runtime_stats(void)
+{
+    struct index_entry idx;
+    int idx_id = find_index(runtime_stats.path);
+    long played_ms = runtime_stats.played_ms;
+    runtime_stats.pending = false;
+
+    if (idx_id < 0 || !get_index(-1, idx_id, &idx, false))
+        return;
+
+    long lastplayed = tagcache_increase_serial();
+    if (lastplayed < 0)
+        return;
+
+    tagcache_update_numeric(idx_id, tag_playcount,
+                            idx.tag_seek[tag_playcount] + 1);
+    tagcache_update_numeric(idx_id, tag_playtime,
+                            idx.tag_seek[tag_playtime] + played_ms);
+    tagcache_update_numeric(idx_id, tag_lastplayed, lastplayed);
+    run_command_queue(true);
+}
+#endif /* TAGCACHE_LOWMEM */
 #endif /* !__PCTOOL__ */
 
 static bool write_tag(int fd, const char *tagstr, const char *datastr)
@@ -4280,6 +4380,20 @@ static bool delete_entry(long idx_id)
  */
 static bool check_event_queue(void)
 {
+#if !defined(__PCTOOL__) && defined(TAGCACHE_LOWMEM)
+    /* Anywhere in the queue, not just at its head: the storage driver's
+     * SYS_USB_LUN_LOCKED broadcast can sit in front of SYS_USB_CONNECTED,
+     * and the boot-time whole-card scan then runs on while USB waits for
+     * our ack. */
+    static const long stop_events[][2] = {
+        { Q_STOP_SCAN, Q_STOP_SCAN },
+        { SYS_POWEROFF, SYS_POWEROFF },
+        { SYS_REBOOT, SYS_REBOOT },
+        { SYS_USB_CONNECTED, SYS_USB_CONNECTED },
+    };
+    return queue_peek_ex(&tagcache_queue, NULL, ARRAYLEN(stop_events) - 1,
+                         stop_events);
+#else
 #ifndef __PCTOOL__
     struct queue_event ev;
 
@@ -4297,6 +4411,7 @@ static bool check_event_queue(void)
 #endif /* __PCTOOL__ */
 
     return false;
+#endif /* TAGCACHE_LOWMEM */
 }
 
 #ifdef HAVE_TC_RAMCACHE
@@ -4948,6 +5063,16 @@ static bool check_dir(const char *dirname, int add_files)
     if (ignore != unignore)
         add_files = unignore;
 
+#ifdef TAGCACHE_LOWMEM
+    /* Without dircache the walk costs ~20 ms an entry: an ignored folder's
+     * subfolders are not searched for a database.unignore */
+    if (ignore && !unignore)
+    {
+        closedir(dir);
+        return true;
+    }
+#endif
+
     /* Recursively scan the dir. */
     while (!check_event_queue())
     {
@@ -5147,6 +5272,14 @@ void do_tagcache_build(const char *path[])
         filenametag_fd = -1;
     }
 
+#if !defined(__PCTOOL__) && defined(TAGCACHE_LOWMEM)
+    /* Back stopped the scan: commit what it found, as the next boot would.
+     * Left uncommitted, the database stays unusable until then (a rebuild
+     * has removed the old one), updates skip the waiting file, and the
+     * Database menu shows the scan's count as a build in progress. */
+    if (scan_cancelled)
+        ret = true;
+#endif
     if (!ret)
     {
         logf("Aborted.");
@@ -5248,7 +5381,11 @@ static void tagcache_thread(void)
      * the changes first in foreground. */
     if (db_file_exists(TAGCACHE_FILE_TEMP))
     {
-#if !(defined(__APPLE__) && (CONFIG_PLATFORM & PLATFORM_SDL))
+        /* LOWMEM: no prompt. A dialog on this thread competes with the UI
+         * thread for button events; one sat for minutes (an empty temp file
+         * left by a power cut) without acking SYS_USB_CONNECTED, so USB
+         * storage never attached. Committing is the prompt's default. */
+#if !(defined(__APPLE__) && (CONFIG_PLATFORM & PLATFORM_SDL)) && !defined(TAGCACHE_LOWMEM)
         static const char *lines[] = {ID2P(LANG_TAGCACHE_BUSY),
                                       ID2P(LANG_TAGCACHE_UPDATE)};
         static const struct text_message message = {lines, 2};
@@ -5301,10 +5438,19 @@ static void tagcache_thread(void)
                 tagcache_import_changelog();
                 break;
 
+#ifdef TAGCACHE_LOWMEM
+            case Q_RUNTIME_STATS:
+                update_runtime_stats();
+                break;
+#endif
+
             case Q_REBUILD:
                 remove_files();
                 remove_db_file(TAGCACHE_FILE_TEMP);
                 tagcache_build();
+#ifdef TAGCACHE_LOWMEM
+                builds_done++;
+#endif
                 break;
 
             case Q_UPDATE:
@@ -5313,6 +5459,9 @@ static void tagcache_thread(void)
                 load_ramcache();
 #endif
                 check_deleted_files();
+#ifdef TAGCACHE_LOWMEM
+                builds_done++;
+#endif
                 break ;
 
             case Q_START_SCAN:
@@ -5333,7 +5482,11 @@ static void tagcache_thread(void)
                 }
                 else
 #endif /* HAVE_RC_RAMCACHE */
+#ifndef TAGCACHE_LOWMEM     /* tagcache_build_now() at boot instead */
                 if (global_settings.tagcache_autoupdate)
+#else
+                if (false)
+#endif
                 {
                     tagcache_build();
 
@@ -5456,6 +5609,60 @@ void tagcache_stop_scan(void)
 {
     queue_post(&tagcache_queue, Q_STOP_SCAN, 0);
 }
+
+#ifdef TAGCACHE_LOWMEM
+/* Low memory: build in the foreground. Stop playback and block the UI so
+ * the commit can borrow all free RAM and nothing allocates meanwhile.
+ * Back stops the scan; what it found is committed (the commit itself runs
+ * to the end). */
+static volatile bool build_now_busy;
+
+/* An update or rebuild from tagcache_build_now() is running: it may hold
+   all free RAM (commit) and stopped playback; the UI waits in its splash. */
+bool tagcache_build_now_busy(void)
+{
+    return build_now_busy;
+}
+
+void tagcache_build_now(bool rebuild)
+{
+    /* at boot the thread may still be checking the database headers */
+    for (int i = 0; i < 20 && !tc_stat.readyvalid; i++)
+        sleep(HZ/2);
+    if (!rebuild && !tc_stat.ready)
+        return;     /* nothing to update: like stock "Update Now" */
+
+    build_now_busy = true;
+    scan_cancelled = false;
+    audio_stop();
+    unsigned int done = builds_done;
+    if (rebuild)
+        tagcache_rebuild();
+    else
+        tagcache_update();
+
+    while (builds_done == done)
+    {
+        if (tc_stat.commit_step > 0)
+            splash_progress(tc_stat.commit_step, tagcache_get_max_commit_step(),
+                            "%s [%d/%d]", str(LANG_TAGCACHE_INIT),
+                            tc_stat.commit_step, tagcache_get_max_commit_step());
+        else
+            /* the live count: tc_stat's copy moves only in tagcache_get_stat() */
+            splashf(0, str(LANG_BUILDING_DATABASE), processed_dir_count);
+
+        int action = get_action(CONTEXT_STD, HZ/2);
+        if (action == ACTION_STD_CANCEL && !scan_cancelled)
+        {
+            scan_cancelled = true;
+            tagcache_stop_scan();
+        }
+        else
+            default_event_handler(action);
+    }
+    build_now_busy = false;
+}
+#endif /* TAGCACHE_LOWMEM */
 
 #endif /* !__PCTOOL__ */
 

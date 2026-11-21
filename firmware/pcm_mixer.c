@@ -265,8 +265,20 @@ fill_frame:
 /* Start PCM driver if it's not currently playing */
 static void mixer_start_pcm(void)
 {
+#ifdef MIXER_IDLE_RESTART
+    /* Still playing the silence after the last channel stopped. Once that
+       ran out, the frame mixed ahead is empty and stops the PCM at the next
+       request, under the channel starting now, and nothing would start it
+       again: stop it here and start over. */
+    if (pcm_is_playing()) {
+        if (next_size)
+            return;
+        pcm_play_stop();
+    }
+#else
     if (pcm_is_playing())
         return;
+#endif
 
 #if defined(HAVE_RECORDING)
     if (pcm_is_recording())

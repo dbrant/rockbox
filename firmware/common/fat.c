@@ -35,6 +35,7 @@
 #include "debug.h"
 #include "panic.h"
 #include "disk.h"
+#include "kernel.h"
 /*#define LOGF_ENABLE*/
 #include "logf.h"
 
@@ -639,6 +640,28 @@ static void randomize_dos_name(unsigned char *dosname,
     *np = n;
 }
 
+/* Numeric tail n if dosname is basisname with the "~n" that
+   randomize_dos_name() would give it, else 0 */
+static int dos_name_tail(const unsigned char *dosname,
+                         const unsigned char *basisname)
+{
+    const unsigned char *tilde = memchr(dosname, '~', 8);
+    if (!tilde || !basisname[0])
+        return 0;
+
+    int n = 0;
+    for (const unsigned char *p = tilde + 1;
+         p < dosname + 8 && *p >= '0' && *p <= '9'; p++)
+        n = n * 10 + (*p - '0');
+
+    unsigned char candidate[11];
+    int np = n - 1;
+    if (n < 1 || n > 999999)
+        return 0;
+    randomize_dos_name(candidate, basisname, &np);
+    return memcmp(candidate, dosname, 11) ? 0 : n;
+}
+
 /* check long filename for validity */
 static int check_longname(const unsigned char *name)
 {
@@ -973,6 +996,9 @@ static void fat_recalc_free_internal16(struct bpb *fat_bpb)
 
     for (unsigned long i = 0; i < fat_bpb->fatsize; i++)
     {
+#ifdef HAVE_FS_SCAN_YIELD
+        yield();    /* a whole-FAT scan takes seconds on a large card */
+#endif
         uint16_t *sec = cache_sector(fat_bpb, i + fat_bpb->fatrgnstart);
         if (!sec)
             break;
@@ -1131,6 +1157,9 @@ static void fat_recalc_free_internal32(struct bpb *fat_bpb)
 
     for (unsigned long i = 0; i < fat_bpb->fatsize; i++)
     {
+#ifdef HAVE_FS_SCAN_YIELD
+        yield();    /* a whole-FAT scan takes seconds on a large card */
+#endif
         uint32_t *sec = cache_sector(fat_bpb, i + fat_bpb->fatrgnstart);
         if (!sec)
             break;
@@ -1659,14 +1688,14 @@ static int write_longname(struct bpb *fat_bpb, struct fat_filestr *parentstr,
         if (!ent)
             FAT_ERROR(-2);
 
-        /* verify this entry is free */
+        /* verify this entry is free; a damaged directory (free-space
+           scan and contents disagree) fails this create instead of
+           panicking the player */
         if (ent->name[0] && ent->name[0] != 0xe5)
         {
-            panicf("Dir entry %d in sector %x is not free! "
-                   "%02x %02x %02x %02x",
-                   i + firstentry, (unsigned)parentstr->lastsector,
-                   (unsigned)ent->data[0], (unsigned)ent->data[1],
-                   (unsigned)ent->data[2], (unsigned)ent->data[3]);
+            DEBUGF("Dir entry %u in sector %x is not free!\n",
+                   i + firstentry, (unsigned)parentstr->lastsector);
+            FAT_ERROR(-3);
         }
 
         memset(ent->data, 0, DIR_ENTRY_SIZE);
@@ -1788,11 +1817,26 @@ static int add_dir_entry(struct bpb *fat_bpb, struct fat_filestr *parentstr,
     const int entperclus = DIR_ENTRIES_PER_SECTOR*fat_bpb->bpb_secperclus;
 
     /* step 1: search for a sufficiently-long run of free entries and check
-               for duplicate shortname */
+               for duplicate shortname. On a duplicate, pick the lowest "~n"
+               tail not seen in the same pass (rescanning once per collision
+               made n similar names cost O(n^2) entries each). */
+    #define TAIL_SLOTS 256
+    uint8_t tails_used[TAIL_SLOTS / 8];
+    int max_tail;
+    bool duplicate;
+
     dc_lock_cache();
+
+rescan:
+    duplicate = false;
+    max_tail = 0;
+    memset(tails_used, 0, sizeof (tails_used));
 
     for (bool done = false; !done;)
     {
+#ifdef HAVE_FS_SCAN_YIELD
+        yield();    /* long directories hold the CPU for whole PCM buffers */
+#endif
         union raw_dirent *ent = cache_direntry(fat_bpb, parentstr, entry);
 
         if (!ent)
@@ -1835,15 +1879,15 @@ static int add_dir_entry(struct bpb *fat_bpb, struct fat_filestr *parentstr,
             /* check that our intended shortname doesn't already exist */
             if (!strncmp(shortname, ent->name, 11))
             {
-                /* shortname exists already, make a new one */
-                DEBUGF("Duplicate shortname '%.11s'", shortname);
-                randomize_dos_name(shortname, basisname, &n);
-                DEBUGF(", changing to '%.11s'\n", shortname);
-
-                /* name has changed, we need to restart search */
-                entry = 0;
-                firstentry = -1;
+                DEBUGF("Duplicate shortname '%.11s'\n", shortname);
+                duplicate = true;
             }
+
+            int tail = dos_name_tail(ent->name, basisname);
+            if (tail > 0 && tail < TAIL_SLOTS)
+                tails_used[tail / 8] |= 1u << (tail % 8);
+            if (tail > max_tail)
+                max_tail = tail;
             break;
         }
 
@@ -1853,6 +1897,31 @@ static int add_dir_entry(struct bpb *fat_bpb, struct fat_filestr *parentstr,
             firstentry = entry - entries_found;
         }
     }
+
+    if (duplicate)
+    {
+        int tail = 1;
+        while (tail < TAIL_SLOTS && (tails_used[tail / 8] & (1u << (tail % 8))))
+            tail++;
+
+        /* all low tails taken: one above the highest seen is free too.
+           Only after "~999999" wraps does a candidate need another pass. */
+        if (tail < TAIL_SLOTS)
+            n = tail - 1;
+        else if (max_tail < 999999)
+            n = max_tail;
+        randomize_dos_name(shortname, basisname, &n);
+        DEBUGF("changing to '%.11s'\n", shortname);
+
+        if (tail >= TAIL_SLOTS && max_tail >= 999999)
+        {
+            entry = 0;
+            entries_found = 0;
+            firstentry = -1;
+            goto rescan;
+        }
+    }
+    #undef TAIL_SLOTS
 
     dc_unlock_cache();
 
@@ -2884,6 +2953,12 @@ int fat_readdir(struct fat_filestr *dirstr, struct fat_dirscan_info *scan,
                 }
 
                 dc_unlock_cache();
+
+#if CONFIG_CPU == SL6801
+                /* cache_direntry() moved the stream: the next sector must
+                   be sought, not read on as if it followed cachep's */
+                cachep->sector = INVALID_SECNUM;
+#endif
 
                 /* retry it once from the new position */
                 scan->entries = 0;

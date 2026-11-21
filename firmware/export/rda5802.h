@@ -24,6 +24,9 @@
 #ifndef _RDA5802_H_
 #define _RDA5802_H_
 
+#include <stdbool.h>
+#include <stdint.h>
+
 #define HAVE_RADIO_REGION
 #define HAVE_RADIO_RSSI
 

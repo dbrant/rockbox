@@ -332,7 +332,7 @@
   <source>
     *: "PLAY = Yes"
     cowond2*: "MENU, or top-right = Yes"
-    creativezen*,gigabeat*,iaudiom5,iaudiox5,ipod*,iriverh10,iriverh10_5gb,mrobe100,sansac200*,sansaclip*,sansaconnect,sansae200*,sansafuze*: "SELECT = Yes"
+    creativezen*,gigabeat*,iaudiom5,iaudiox5,ipod*,iriverh10,iriverh10_5gb,mrobe100,sansac200*,sansaclip*,sansaconnect,sansae200*,sansafuze*,yp3: "SELECT = Yes"
     iriverh100,iriverh120,iriverh300: "NAVI = Yes"
     mrobe500: "PLAY, POWER, or top-right = Yes"
     vibe500: "OK = Yes"
@@ -340,7 +340,7 @@
   <dest>
     *: "PLAY = Yes"
     cowond2*: "MENU, or top-right = Yes"
-    creativezen*,gigabeat*,iaudiom5,iaudiox5,ipod*,iriverh10,iriverh10_5gb,mrobe100,sansac200*,sansaclip*,sansaconnect,sansae200*,sansafuze*: "SELECT = Yes"
+    creativezen*,gigabeat*,iaudiom5,iaudiox5,ipod*,iriverh10,iriverh10_5gb,mrobe100,sansac200*,sansaclip*,sansaconnect,sansae200*,sansafuze*,yp3: "SELECT = Yes"
     iriverh100,iriverh120,iriverh300: "NAVI = Yes"
     mrobe500: "PLAY, POWER, or top-right = Yes"
     vibe500: "OK = Yes"
@@ -2075,14 +2075,14 @@
   user: core
   <source>
     *: "Building database... %d found (OFF to return)"
-    gigabeat*,iaudiom5,iaudiox5,mrobe100,samsungyh*: "Building database... %d found (LEFT to return)"
+    gigabeat*,iaudiom5,iaudiox5,mrobe100,samsungyh*,yp3: "Building database... %d found (LEFT to return)"
     gogearsa9200: "Building database... %d found (REW to return)"
     ipod*,iriverh10,iriverh10_5gb,sansac200*,sansae200*,sansafuze*,vibe500: "Building database... %d found (PREV to return)"
     iriverh100,iriverh120,iriverh300: "Building database... %d found (STOP to return)"
   </source>
   <dest>
     *: "Building database... %d found (OFF to return)"
-    gigabeat*,iaudiom5,iaudiox5,mrobe100,samsungyh*: "Building database... %d found (LEFT to return)"
+    gigabeat*,iaudiom5,iaudiox5,mrobe100,samsungyh*,yp3: "Building database... %d found (LEFT to return)"
     gogearsa9200: "Building database... %d found (REW to return)"
     ipod*,iriverh10,iriverh10_5gb,sansac200*,sansae200*,sansafuze*,vibe500: "Building database... %d found (PREV to return)"
     iriverh100,iriverh120,iriverh300: "Building database... %d found (STOP to return)"
@@ -7282,6 +7282,7 @@
     ipod*: "PLAY/PAUSE to abort"
     iriverh10,iriverh10_5gb,sansac200*,sansae200*,vibe500: "PREV to abort"
     iriverh100,iriverh120,iriverh300: "STOP to abort"
+    yp3: "LEFT to abort"
   </source>
   <dest>
     *: "OFF to abort"
@@ -7291,6 +7292,7 @@
     ipod*: "PLAY/PAUSE to abort"
     iriverh10,iriverh10_5gb,sansac200*,sansae200*,vibe500: "PREV to abort"
     iriverh100,iriverh120,iriverh300: "STOP to abort"
+    yp3: "LEFT to abort"
   </dest>
   <voice>
     *: ""
@@ -17229,5 +17231,443 @@
   <voice>
     *: none
     touchscreen: "Touchscreen Flick Shortcuts"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_TAGCACHE_NO_MEMORY
+  desc: database menus do not fit in free memory (low-memory targets, usually while playing)
+  user: core
+  <source>
+    *: "Not enough memory for the database menus. Stop playback and try again."
+    yp3: "Not enough memory for the database menus. Try a lighter theme."
+  </source>
+  <dest>
+    *: "Not enough memory for the database menus. Stop playback and try again."
+    yp3: "Not enough memory for the database menus. Try a lighter theme."
+  </dest>
+  <voice>
+    *: "Not enough memory"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH
+  desc: Bluetooth setting and menu
+  user: core
+  <source>
+    *: none
+    bluetooth: "Bluetooth"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Bluetooth"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Bluetooth"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_AUTOCONNECT
+  desc: Bluetooth: connect to the most recent paired device at power-on
+  user: core
+  <source>
+    *: none
+    bluetooth: "Auto-Connect"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Auto-Connect"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Auto connect"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_SCAN
+  desc: Bluetooth menu: search for devices and connect to one
+  user: core
+  <source>
+    *: none
+    bluetooth: "Scan and Connect"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Scan and Connect"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Scan and connect"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_SCANNING
+  desc: Bluetooth: title while searching for devices
+  user: core
+  <source>
+    *: none
+    bluetooth: "Scanning..."
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Scanning..."
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Scanning"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_PAIRED
+  desc: Bluetooth menu: list of paired devices
+  user: core
+  <source>
+    *: none
+    bluetooth: "Paired Devices"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Paired Devices"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Paired devices"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_CONNECT
+  desc: Bluetooth: connect to the selected device
+  user: core
+  <source>
+    *: none
+    bluetooth: "Connect"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Connect"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Connect"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_FORGET
+  desc: Bluetooth: remove the selected paired device
+  user: core
+  <source>
+    *: none
+    bluetooth: "Forget"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Forget"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Forget"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_DISCONNECT
+  desc: Bluetooth menu: disconnect the connected device
+  user: core
+  <source>
+    *: none
+    bluetooth: "Disconnect"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Disconnect"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Disconnect"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_CONNECTING
+  desc: Bluetooth: splash and status while connecting
+  user: core
+  <source>
+    *: none
+    bluetooth: "Connecting..."
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Connecting..."
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Connecting"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_NOT_CONNECTED
+  desc: Bluetooth menu: status line, no device connected
+  user: core
+  <source>
+    *: none
+    bluetooth: "Not Connected"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Not Connected"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Not connected"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_CONNECTED
+  desc: Bluetooth menu: status line, followed by the device name
+  user: core
+  <source>
+    *: none
+    bluetooth: "Connected"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Connected"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Connected"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_STREAMING
+  desc: Bluetooth menu: status line, playing to the device; followed by its name
+  user: core
+  <source>
+    *: none
+    bluetooth: "Streaming"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Streaming"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Streaming"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_TURNING_ON
+  desc: Bluetooth: splash while the radio starts
+  user: core
+  <source>
+    *: none
+    bluetooth: "Turning on Bluetooth..."
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Turning on Bluetooth..."
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Turning on Bluetooth"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_UNAVAILABLE
+  desc: Bluetooth: power-on failed
+  user: core
+  <source>
+    *: none
+    bluetooth: "Bluetooth not available"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Bluetooth not available"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Bluetooth not available"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_NO_DEVICES
+  desc: Bluetooth: scan found nothing
+  user: core
+  <source>
+    *: none
+    bluetooth: "No devices found"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "No devices found"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "No devices found"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_CONNECT_FAILED
+  desc: Bluetooth: connecting to a device failed
+  user: core
+  <source>
+    *: none
+    bluetooth: "Could not connect"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Could not connect"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Could not connect"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_AUDIO_NO_MEMORY
+  desc: the playback buffer does not fit in free memory (low-memory targets, e.g. a theme with large fonts)
+  user: core
+  <source>
+    *: "Not enough memory to play. Try a lighter theme."
+  </source>
+  <dest>
+    *: "Not enough memory to play. Try a lighter theme."
+  </dest>
+  <voice>
+    *: "Not enough memory"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_TAGCACHE_STOP_PLAYBACK
+  desc: database menus do not fit while playing: stop playback to free its buffer?
+  user: core
+  <source>
+    *: none
+    yp3: "Not enough memory for the database while music plays. Stop playback? A lighter theme also helps."
+  </source>
+  <dest>
+    *: none
+    yp3: "Not enough memory for the database while music plays. Stop playback? A lighter theme also helps."
+  </dest>
+  <voice>
+    *: none
+    yp3: "Stop playback?"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_SHUTDOWN_ITEM
+  desc: main menu entry: power the player off
+  user: core
+  <source>
+    *: none
+    yp3: "Shut Down"
+  </source>
+  <dest>
+    *: none
+    yp3: "Shut Down"
+  </dest>
+  <voice>
+    *: none
+    yp3: "Shut Down"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_THEME_LOW_MEMORY
+  desc: after loading a theme: it leaves too little memory for playback or the database
+  user: core
+  <source>
+    *: none
+    yp3: "This theme leaves little memory: playback or the database may fail. Try a lighter theme."
+  </source>
+  <dest>
+    *: none
+    yp3: "This theme leaves little memory: playback or the database may fail. Try a lighter theme."
+  </dest>
+  <voice>
+    *: none
+    yp3: "Low memory"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_KBD_HINT
+  desc: virtual keyboard footer on five-key players: hold Select = done, hold Right = delete, hold Left = cancel
+  user: core
+  <source>
+    *: none
+    yp3: "Hold: Sel=OK R=Del L=Quit"
+  </source>
+  <dest>
+    *: none
+    yp3: "Hold: Sel=OK R=Del L=Quit"
+  </dest>
+  <voice>
+    *: none
+    yp3: ""
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_BATTERY
+  desc: Bluetooth menu: the connected headset's battery level; followed by a percentage
+  user: core
+  <source>
+    *: none
+    bluetooth: "Headset battery"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Headset battery"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: "Headset battery"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_CHARGE_LIMIT
+  desc: in battery settings: charging stops at this battery level
+  user: core
+  <source>
+    *: none
+    charge_limit: "Charge Limit"
+  </source>
+  <dest>
+    *: none
+    charge_limit: "Charge Limit"
+  </dest>
+  <voice>
+    *: none
+    charge_limit: "Charge Limit"
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_BLUETOOTH_TYPE_CODE
+  desc: Bluetooth: pairing a keyboard; %s is the code to type on it
+  user: core
+  <source>
+    *: none
+    bluetooth: "Type %s and Enter on the keyboard"
+  </source>
+  <dest>
+    *: none
+    bluetooth: "Type %s and Enter on the keyboard"
+  </dest>
+  <voice>
+    *: none
+    bluetooth: ""
+  </voice>
+</phrase>
+<phrase>
+  id: LANG_REC_NO_MEMORY
+  desc: the recording buffer does not fit in free memory (yp3: a theme or Bluetooth holds too much)
+  user: core
+  <source>
+    *: none
+    yp3: "Not enough memory to record. Try a lighter theme."
+  </source>
+  <dest>
+    *: none
+    yp3: "Not enough memory to record. Try a lighter theme."
+  </dest>
+  <voice>
+    *: none
+    yp3: "Not enough memory"
   </voice>
 </phrase>

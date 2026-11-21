@@ -410,8 +410,9 @@ void lcd_mono_bitmap(const unsigned char *src, int x, int y, int width, int heig
 #define BLEND_OUT(acc) do {} while (0)
 #endif
 
-/* Blend the given two colors */
-static inline unsigned blend_two_colors(unsigned c1, unsigned c2, unsigned a)
+/* Blend the given two colors. Called per pixel from the ICODE loop below:
+ * if the compiler keeps it out of line, keep it in IRAM too. */
+static inline unsigned ICODE_ATTR blend_two_colors(unsigned c1, unsigned c2, unsigned a)
 {
     a += a >> (ALPHA_BPP - 1);
 #if (LCD_PIXELFORMAT == RGB565SWAPPED)

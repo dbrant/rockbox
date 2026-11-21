@@ -25,6 +25,7 @@
 #include "kernel.h"
 #include "usb_serial.h"
 #include "usb_class_driver.h"
+#include "devlog.h"
 /*#define LOGF_ENABLE*/
 #include "logf.h"
 
@@ -189,7 +190,13 @@ static union line_coding_buffer line_coding;
  */
 #define BUFFER_SIZE 512
 #define TRANSIT_BUFFER_SIZE 32
+#ifdef USB_SERIAL_RX_WHOLE_PACKET
+/* PIO receivers that need room for a whole bulk packet (YP3, TS17). Keep
+ * the established request size on other controllers. */
+#define RECV_BUFFER_SIZE (usb_drv_port_speed() ? 512 : 64)
+#else
 #define RECV_BUFFER_SIZE 32
+#endif
 static unsigned char send_buffer[BUFFER_SIZE];
 static unsigned char transit_buffer[TRANSIT_BUFFER_SIZE]
     USB_DEVBSS_ATTR __attribute__((aligned(4)));
@@ -235,15 +242,16 @@ static int usb_serial_get_config_descriptor(unsigned char *dest, int max_packet_
     union_descriptor.bSubordinateInterface0        = data_interface;
     data_interface_descriptor.bInterfaceNumber     = data_interface;
 
+    control_interface_descriptor.bNumEndpoints = (EP_INT > 0) ? 1 : 0;
+    PACK_DATA(&dest, association_descriptor);
+    PACK_DATA(&dest, control_interface_descriptor);
+    PACK_DATA(&dest, header_descriptor);
+    PACK_DATA(&dest, call_management_descriptor);
+    PACK_DATA(&dest, acm_descriptor);
+    PACK_DATA(&dest, union_descriptor);
+
     if (EP_INT > 0)
     {
-        PACK_DATA(&dest, association_descriptor);
-        PACK_DATA(&dest, control_interface_descriptor);
-        PACK_DATA(&dest, header_descriptor);
-        PACK_DATA(&dest, call_management_descriptor);
-        PACK_DATA(&dest, acm_descriptor);
-        PACK_DATA(&dest, union_descriptor);
-
         /* Notification endpoint. Set wMaxPacketSize to 64 as it is valid
          * both on Full and High speed. Note that max_packet_size is for bulk.
          * Maximum bInterval for High Speed is 16 and for Full Speed is 255.
@@ -331,6 +339,9 @@ static int usb_serial_init_connection(void)
         sendout();
     }
     active=true;
+#ifdef HAVE_DEVLOG
+    dev_serial_connected();     /* quiet until this connection's host writes */
+#endif
     return 0;
 }
 
@@ -348,6 +359,10 @@ static void usb_serial_disconnect(void)
     active = false;
 }
 
+#ifdef HAVE_DEVLOG
+static unsigned send_refused;   /* TODO(cleanup): lost shell replies */
+#endif
+
 static void sendout(void)
 {
     buffer_transitlength = MIN(buffer_length,BUFFER_SIZE-buffer_start);
@@ -356,7 +371,12 @@ static void sendout(void)
         buffer_transitlength = MIN(buffer_transitlength,TRANSIT_BUFFER_SIZE);
         buffer_length -= buffer_transitlength;
         memcpy(transit_buffer,&send_buffer[buffer_start],buffer_transitlength);
-        usb_drv_send_nonblocking(EP_IN,transit_buffer,buffer_transitlength);
+        int rc = usb_drv_send_nonblocking(EP_IN,transit_buffer,buffer_transitlength);
+#ifdef HAVE_DEVLOG
+        if (rc < 0)
+            send_refused++;
+#endif
+        (void)rc;
     }
 }
 
@@ -402,16 +422,37 @@ void usb_serial_send(const unsigned char *data,int length)
     /* else do nothing. The transfer completion handler will pick it up */
 }
 
+/* Bytes usb_serial_send() can queue now; -1 when the port is not active. */
+int usb_serial_send_space(void)
+{
+    if (!active)
+        return -1;
+    return BUFFER_SIZE - (buffer_length + buffer_transitlength);
+}
+
+#ifdef HAVE_DEVLOG
+void usb_serial_dev_state(int *queued, int *in_transit, unsigned *refused)
+{
+    *queued = buffer_length;
+    *in_transit = buffer_transitlength;
+    *refused = send_refused;
+}
+#endif
+
 /* called by usb_core_transfer_complete() */
 static void usb_serial_transfer_complete(int ep,int dir, int status, int length)
 {
     (void)ep;
     (void)length;
+    (void)status;
 
     switch (dir) {
         case USB_DIR_OUT:
             logf("serial: %s", receive_buffer);
-            /* Data received. TODO : Do something with it ? */
+#ifdef USB_SERIAL_RX_HOOK
+            if (status == 0 && length > 0)
+                USB_SERIAL_RX_HOOK(receive_buffer, length);
+#endif
 
             /* Get the next bit */
             usb_drv_recv_nonblocking(EP_OUT, receive_buffer, RECV_BUFFER_SIZE);

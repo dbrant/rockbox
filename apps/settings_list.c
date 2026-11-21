@@ -315,6 +315,10 @@
 #define VIEWPORT_SETTING(var,name)      \
         TEXT_SETTING(F_THEMESETTING|F_NEEDAPPLY,var,name,"-", NULL, NULL)
 
+#ifndef REC_PRERECORD_MAX_SECONDS
+#define REC_PRERECORD_MAX_SECONDS 30
+#endif
+
 /* some sets of values which are used more than once, to save memory */
 static const char off[] = "off";
 static const char off_on[] = "off,on";
@@ -438,6 +442,10 @@ static const char graphic_numeric[] = "graphic,numeric";
 #  define DEFAULT_REC_MIC_GAIN 16
 #  define DEFAULT_REC_LEFT_GAIN 0
 #  define DEFAULT_REC_RIGHT_GAIN 0
+# elif defined(HAVE_YP3_CODEC)  /* driver codes, as yp3_codec.h defaults */
+#  define DEFAULT_REC_MIC_GAIN 84
+#  define DEFAULT_REC_LEFT_GAIN 22
+#  define DEFAULT_REC_RIGHT_GAIN 22
 # endif
 
 #endif /* HAVE_RECORDING */
@@ -478,7 +486,9 @@ static const char graphic_numeric[] = "graphic,numeric";
  * also applies to the database browser so it makes sense to support
  * larger maximums.
  */
-#if MEMORYSIZE >= 16
+#if defined(MAX_FILES_IN_DIR_DEFAULT)
+/* set by the target (config/<target>.h) */
+#elif MEMORYSIZE >= 16
 # define MAX_FILES_IN_DIR_DEFAULT   5000
 # define MAX_FILES_IN_DIR_MAX       100000
 # define MAX_FILES_IN_DIR_STEP      1000
@@ -1085,6 +1095,11 @@ const struct settings_list settings[] = {
     SYSTEM_STATUS(0, topruntime,      0,     "TRT"),
     SYSTEM_STATUS(0, last_screen,    -1,     "PVS"),
     SYSTEM_STATUS(0, last_browser,    0,     "BRS"),
+#ifdef HAVE_BLUETOOTH
+    SYSTEM_STATUS_SOUND(F_NO_WRAP, volume_other, LANG_VOLUME, "volume other output",
+                        SOUND_VOLUME),
+    SYSTEM_STATUS(0, volume_is_bt,    0,     "volume is bluetooth"),
+#endif
 /* sound settings */
     CUSTOM_SETTING(F_NO_WRAP, volume_limit, LANG_VOLUME_LIMIT,
                   NULL, "volume limit",
@@ -1386,7 +1401,12 @@ const struct settings_list settings[] = {
 #else
                   400,
 #endif
+#ifdef MAX_FILES_IN_PLAYLIST_MAX /* set by the target */
+                  "max files in playlist", UNIT_INT, MAX_FILES_IN_PLAYLIST_MIN,
+                  MAX_FILES_IN_PLAYLIST_MAX, MAX_FILES_IN_PLAYLIST_STEP,
+#else
                   "max files in playlist", UNIT_INT, 1000, 32000, 1000,
+#endif
                   NULL, NULL, NULL),
     INT_SETTING(F_BANFROMQS, max_files_in_dir, LANG_MAX_FILES_IN_DIR,
                 MAX_FILES_IN_DIR_DEFAULT, "max files in dir", UNIT_INT,
@@ -1784,7 +1804,7 @@ const struct settings_list settings[] = {
         HAVE_FMRADIO_REC_(",fmradio")[1]}},
     INT_SETTING(F_TIME_SETTING | F_RECSETTING, rec_prerecord_time,
                 LANG_RECORD_PRERECORD_TIME, 0,
-                "prerecording time", UNIT_SEC, 0, 30, 1,
+                "prerecording time", UNIT_SEC, 0, REC_PRERECORD_MAX_SECONDS, 1,
                 formatter_time_unit_0_is_off, getlang_time_unit_0_is_off, NULL),
 
     TEXT_SETTING(F_RECSETTING, rec_directory, "rec path",
@@ -2201,6 +2221,11 @@ const struct settings_list settings[] = {
                   LANG_HEADPHONE_UNPLUG_DISABLE_AUTORESUME, false,
                   "disable autoresume if phones not present",NULL),
 #endif
+#ifdef HAVE_BLUETOOTH
+    OFFON_SETTING(0, bt_enabled, LANG_BLUETOOTH, false, "bluetooth", NULL),
+    OFFON_SETTING(0, bt_autoconnect, LANG_BLUETOOTH_AUTOCONNECT, true,
+                  "bluetooth auto-connect", NULL),
+#endif
     INT_SETTING(F_TIME_SETTING, pause_rewind, LANG_PAUSE_REWIND, 0,
                 "rewind duration on pause", UNIT_SEC, 0, 15, 1,
                 formatter_time_unit_0_is_off, getlang_time_unit_0_is_off, NULL),
@@ -2252,8 +2277,15 @@ const struct settings_list settings[] = {
                    "off,on,force", NULL, 3, ID2P(LANG_SET_BOOL_NO),
                    ID2P(LANG_SET_BOOL_YES), ID2P(LANG_FORCE)),
 #endif
+#ifdef HAVE_CHARGE_LIMIT
+    INT_SETTING_NOWRAP(F_CB_ON_SELECT_ONLY|F_CB_ONLY_IF_CHANGED, charge_limit,
+                       LANG_CHARGE_LIMIT, 100, "charge limit", UNIT_PERCENT,
+                       50, 100, 10, NULL, NULL, set_charge_limit),
+#endif
+#ifndef HAVE_MINIMAL_AUDIO_PROFILE
     OFFON_SETTING(F_BANFROMQS,cuesheet,LANG_CUESHEET_ENABLE,false,"cuesheet support",
                   NULL),
+#endif
     TABLE_SETTING_LIST(F_TIME_SETTING | F_ALLOW_ARBITRARY_VALS, skip_length,
                   LANG_SKIP_LENGTH, 0, "skip length",
                   "outro,track",
@@ -2421,11 +2453,21 @@ const struct settings_list settings[] = {
                   false, "shortcuts instead of quickscreen", NULL),
 #endif
 #ifdef HAVE_SPEAKER
-    CHOICE_SETTING(0, speaker_mode, LANG_ENABLE_SPEAKER, 0, "speaker mode",
+#ifndef DEFAULT_SPEAKER_MODE
+#define DEFAULT_SPEAKER_MODE 0
+#endif
+#ifdef YP3_SL6801
+/* The value is 0 = off, 1 = on (audio_enable_speaker, the labels): the
+ * names elsewhere save "on" for off */
+#define SPEAKER_MODE_NAMES "off,on"
+#else
+#define SPEAKER_MODE_NAMES "on,off"
+#endif
+    CHOICE_SETTING(0, speaker_mode, LANG_ENABLE_SPEAKER, DEFAULT_SPEAKER_MODE, "speaker mode",
 # ifdef HAVE_HEADPHONE_DETECTION
-                   "on,off,auto", audio_enable_speaker, 3, ID2P(LANG_OFF), ID2P(LANG_ON), ID2P(LANG_AUTO)),
+                   SPEAKER_MODE_NAMES ",auto", audio_enable_speaker, 3, ID2P(LANG_OFF), ID2P(LANG_ON), ID2P(LANG_AUTO)),
 #else /* HAVE_HEADPHONE_DETECTION */
-                   "on,off", audio_enable_speaker, 2, ID2P(LANG_OFF), ID2P(LANG_ON)),
+                   SPEAKER_MODE_NAMES, audio_enable_speaker, 2, ID2P(LANG_OFF), ID2P(LANG_ON)),
 #endif /* HAVE_HEADPHONE_DETECTION */
 #endif /* HAVE_SPEAKER */
 #ifdef HAVE_TOUCHSCREEN

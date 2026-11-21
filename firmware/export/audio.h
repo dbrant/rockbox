@@ -48,6 +48,10 @@
 void audio_init(void) INIT_ATTR;
 void audio_play(unsigned long elapsed, unsigned long offset);
 void audio_stop(void);
+#ifdef TARGET_AUDIO_BUFFER_CAP
+/* true: stopped and the full-size playback buffer would not fit the heap */
+bool audio_low_memory(void);
+#endif
 /* Stops audio from serving playback and frees resources*/
 void audio_hard_stop(void);
 void audio_pause(void);
@@ -149,6 +153,9 @@ struct audio_recording_options
 
 /* audio recording functions */
 void audio_init_recording(void);
+#ifdef PCMREC_LOWMEM
+bool audio_recording_ready(void); /* false: not enough memory */
+#endif
 void audio_close_recording(void);
 void audio_record(const char *filename);
 void audio_stop_recording(void);

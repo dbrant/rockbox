@@ -40,6 +40,10 @@
 /* Define LOGF_ENABLE to enable logf output in this file */
 /* #define LOGF_ENABLE */
 #include "logf.h"
+#ifdef HAVE_DEVLOG
+#include <errno.h>
+#include "devlog.h"
+#endif
 
 #define BUF_MAX_HANDLES 384
 
@@ -64,7 +68,20 @@
 #define LOGFQUEUE_SYS_TIMEOUT(...)
 #endif
 
+#ifdef TARGET_GUARD_BUFSIZE
+/* Small rings: the guard also caps every bufgetdata() request, since a
+ * request larger than the ring can hold would wait forever. Playback may
+ * pick a smaller one for codecs that only copy (buffering_set_guard). */
+static size_t guard_bufsize = TARGET_GUARD_BUFSIZE;
+#define GUARD_BUFSIZE   guard_bufsize
+
+void buffering_set_guard(size_t size)
+{
+    guard_bufsize = size;
+}
+#else
 #define GUARD_BUFSIZE   (32*1024)
+#endif
 
 /* amount of data to read in one read() call */
 #define BUFFERING_DEFAULT_FILECHUNK      (1024*32)
@@ -167,7 +184,10 @@ enum
 
 /* Buffering thread */
 static void buffering_thread(void);
-static long buffering_stack[(DEFAULT_STACK_SIZE + 0x2000)/sizeof(long)];
+#ifndef TARGET_BUFFERING_STACK_SIZE
+#define TARGET_BUFFERING_STACK_SIZE (DEFAULT_STACK_SIZE + 0x2000)
+#endif
+static long buffering_stack[TARGET_BUFFERING_STACK_SIZE/sizeof(long)];
 static const char buffering_thread_name[] = "buffering";
 static unsigned int buffering_thread_id = 0;
 static struct event_queue buffering_queue SHAREDBSS_ATTR;
@@ -639,6 +659,12 @@ static bool buffer_handle(int handle_id, size_t to_buffer)
             h->fd = open(h->path, O_RDONLY);
 
         if (h->fd < 0) {
+#ifdef HAVE_DEVLOG
+            dev_log("buffering: open failed (errno %d), handle %d type %d "
+                    "truncated at %ld: %s", errno, h->id, (int)h->type,
+                    (long)h->end, h->path);
+            dev_files_open(true);
+#endif
             /* could not open the file, truncate it where it is */
             h->filesize = h->end;
             return true;
@@ -1328,11 +1354,15 @@ static struct memory_handle *prep_bufdata(int handle_id, size_t *size,
     if (realsize <= 0 || realsize > filerem)
         realsize = filerem; /* clip to eof */
 
-    if (guardbuf_limit && realsize > GUARD_BUFSIZE) {
+    if (guardbuf_limit && realsize > (off_t)GUARD_BUFSIZE) {
         logf("data request > guardbuf");
         /* If more than the size of the guardbuf is requested and this is a
          * bufgetdata, limit to guard_bufsize over the end of the buffer */
+#ifdef TARGET_GUARD_BUFSIZE
+        realsize = GUARD_BUFSIZE;
+#else
         realsize = MIN((size_t)realsize, buffer_len - h->ridx + GUARD_BUFSIZE);
+#endif
         /* this ensures *size <= buffer_len - h->ridx + GUARD_BUFSIZE */
     }
 
@@ -1553,6 +1583,22 @@ size_t buf_used(void)
     return used;
 }
 
+#ifdef HAVE_DEVLOG
+/* The handle list for a dev stall dump (dev_shell.c). No lock: the dump
+ * must not wait on a thread that hangs holding it. */
+void buffering_dev_state(void)
+{
+    struct memory_handle *f = HLIST_FIRST, *l = HLIST_LAST;
+    dev_log("  buffering: handles %d base %d buffer %p+%lu first %d/%d "
+            "last %d/%d %ld-%ld/%ld",
+            num_handles, base_handle_id, buffer, (unsigned long)buffer_len,
+            f ? f->id : -1, f ? (int)f->type : -1,
+            l ? l->id : -1, l ? (int)l->type : -1,
+            l ? (long)l->start : 0, l ? (long)l->end : 0,
+            l ? (long)l->filesize : 0);
+}
+#endif
+
 void buf_set_watermark(size_t bytes)
 {
     conf_watermark = bytes;
@@ -1696,14 +1742,33 @@ bool buffering_reset(char *buf, size_t buflen)
     /* Wraps of storage-aligned data must also be storage aligned,
        thus buf and buflen must be a aligned to an integer multiple of
        the storage alignment */
+#ifdef HAVE_DEVLOG
+    if (num_handles)    /* handles a track list may still name */
+        dev_log("buffering reset: %d handles (%d-%d) dropped, new %p+%lu, from %p",
+                num_handles, HLIST_FIRST ? HLIST_FIRST->id : -1,
+                HLIST_LAST ? HLIST_LAST->id : -1, buf, (unsigned long)buflen,
+                __builtin_return_address(0));
+#endif
 
+    bool ok = true;
     if (buf) {
         buflen -= MIN(buflen, GUARD_BUFSIZE);
 
         STORAGE_ALIGN_BUFFER(buf, buflen);
 
         if (!buf || !buflen)
+#ifdef TARGET_AUDIO_BUFFER_CAP
+        {
+            /* Too small for the guard: empty rather than keep the old
+             * buffer, which the caller has already given to something else
+             * (an Ogg codec read garbage from it) */
+            buf = NULL;
+            buflen = 0;
+            ok = false;
+        }
+#else
             return false;
+#endif
     } else {
         buflen = 0;
     }
@@ -1712,9 +1777,20 @@ bool buffering_reset(char *buf, size_t buflen)
 
     /* If handles weren't closed above, just do it */
     struct memory_handle *h;
+#ifdef TARGET_AUDIO_BUFFER_CAP
+    /* The list lives inside the old buffer: if that was freed and reused
+     * (heap moves), a closed handle stays first and this looped forever.
+     * Stop when closing makes no progress; the lists are reset below. */
+    while ((h = HLIST_FIRST)) {
+        bufclose(h->id);
+        if (HLIST_FIRST == h)
+            break;
+    }
+#else
     while ((h = HLIST_FIRST)) {
         bufclose(h->id);
     }
+#endif
 
     buffer = buf;
     buffer_len = buflen;
@@ -1736,7 +1812,7 @@ bool buffering_reset(char *buf, size_t buflen)
 
     thread_thaw(buffering_thread_id);
 
-    return true;
+    return ok;
 }
 
 void buffering_get_debugdata(struct buffering_debug *dbgdata)

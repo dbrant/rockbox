@@ -97,4 +97,8 @@ struct mp3entry* get_temp_mp3entry(struct mp3entry *free);
 void allocate_playback_log(void);
 void add_playbacklog(struct mp3entry *id3);
 
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+void *audio_codec_extra_buffer(size_t *size);
+#endif
+
 #endif /* _PLAYBACK_H */

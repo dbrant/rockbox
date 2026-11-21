@@ -67,10 +67,24 @@
 #define SYS_REMOTE_UNPLUGGED      MAKE_SYS_EVENT(SYS_EVENT_CLS_PLUG, 5)
 #define SYS_LINEOUT_PLUGGED       MAKE_SYS_EVENT(SYS_EVENT_CLS_PLUG, 6)
 #define SYS_LINEOUT_UNPLUGGED     MAKE_SYS_EVENT(SYS_EVENT_CLS_PLUG, 7)
+#ifdef HAVE_BLUETOOTH
+/* A Bluetooth audio device's stream is ready / the device is gone
+ * (button queue, handled by apps/bluetooth_policy.c via default_event_handler) */
+#define SYS_BT_AUDIO_CONNECTED    MAKE_SYS_EVENT(SYS_EVENT_CLS_PLUG, 8)
+#define SYS_BT_AUDIO_DISCONNECTED MAKE_SYS_EVENT(SYS_EVENT_CLS_PLUG, 9)
+/* The headset's volume (AVRCP absolute volume), data: centibels */
+#define SYS_BT_VOLUME             MAKE_SYS_EVENT(SYS_EVENT_CLS_MISC, 7)
+/* The headset's Play (data 1) or Pause (data 0) */
+#define SYS_BT_PLAY               MAKE_SYS_EVENT(SYS_EVENT_CLS_MISC, 8)
+#endif
 #define SYS_CAR_ADAPTER_RESUME    MAKE_SYS_EVENT(SYS_EVENT_CLS_MISC, 0)
 #define SYS_CALL_INCOMING         MAKE_SYS_EVENT(SYS_EVENT_CLS_MISC, 3)
 #define SYS_CALL_HUNG_UP          MAKE_SYS_EVENT(SYS_EVENT_CLS_MISC, 4)
 #define SYS_VOLUME_CHANGED        MAKE_SYS_EVENT(SYS_EVENT_CLS_MISC, 5)
+#ifdef HAVE_DEVLOG
+/* Dev shell request run in the UI thread (apps/dev_shell.c). */
+#define SYS_DEV_RUN           MAKE_SYS_EVENT(SYS_EVENT_CLS_MISC, 6)
+#endif
 
 #define IS_SYSEVENT(ev)           ((ev & SYS_EVENT) == SYS_EVENT)
 

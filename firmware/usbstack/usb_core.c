@@ -497,6 +497,12 @@ void usb_core_handle_transfer_completion(
     int num = EP_NUM(event->ep);
     int dir = EP_DIR(event->ep);
 
+#ifdef HAVE_EXTENDED_MESSAGING_AND_NAME
+    /* Reset has invalidated even completions queued ahead of its notification. */
+    if(bus_reset_pending)
+        return;
+#endif
+
     if(num == EP_CONTROL) {
         logf("ctrl handled %ld req=0x%x", current_tick,event->req->bRequest);
         usb_core_control_request_handler(event->req, usb_control_data, sizeof(usb_control_data));
@@ -1184,12 +1190,17 @@ void usb_core_bus_reset(void)
         return;
     }
     bus_reset_pending = true;
+#ifdef HAVE_EXTENDED_MESSAGING_AND_NAME
+    /* The USB thread still owns queued/running request and event storage. */
+    usb_signal_notify(USB_NOTIFY_BUS_RESET, 0);
+#else
+    /* Preserve the existing path where the USB thread cannot purge events. */
     if(usb_config == 0) {
         do_bus_reset();
     } else {
-        /* need to disconnect class drivers, defer it to usb thread */
         usb_signal_notify(USB_NOTIFY_BUS_RESET, 0);
     }
+#endif
 }
 
 static void signal_xfer_complete(int ep, struct usb_ctrlrequest* req, int status, int length) {
@@ -1280,6 +1291,11 @@ void usb_core_transfer_complete(int ep, int dir, int status, int length) {
     /* EXPECT_RX_DATA_COMP -(data comp)-> HANDLING_RX_CONTROL [-(send status)-> EXPECT_RX_STATUS_COMP] -(status comp)-> READY
      *                                                        ^ done in control_response() */
     case USB_DIR_OUT | EP0_EXPECT_RX_DATA_COMP:
+        if (status != 0 || length != handling_request.wLength) {
+            set_ep0_state(EP0_READY);
+            usb_drv_stall(EP_CONTROL, true, true);
+            break;
+        }
         set_ep0_state(EP0_HANDLING_RX_CONTROL);
         signal_xfer_complete(EP_CONTROL | USB_DIR_OUT, &handling_request, status, length);
         break;
@@ -1299,6 +1315,11 @@ void usb_core_transfer_complete(int ep, int dir, int status, int length) {
 
 void usb_core_handle_notify(long id, intptr_t data)
 {
+#ifdef HAVE_EXTENDED_MESSAGING_AND_NAME
+    if(bus_reset_pending && id != USB_NOTIFY_BUS_RESET)
+        return;
+#endif
+
     switch(id)
     {
         case USB_NOTIFY_SET_ADDR:
@@ -1309,6 +1330,9 @@ void usb_core_handle_notify(long id, intptr_t data)
             break;
         case USB_NOTIFY_BUS_RESET:
             usb_core_do_set_config(0);
+#ifdef HAVE_EXTENDED_MESSAGING_AND_NAME
+            usb_clear_pending_transfer_completion_events();
+#endif
             do_bus_reset();
 #ifdef HAVE_USB_CHARGING_ENABLE
             usb_charging_maxcurrent_change(usb_charging_maxcurrent());

@@ -22,6 +22,12 @@ FIRMLIB_OBJ := $(call c2obj, $(FIRMLIB_SRC))
 FIRMLIB_OBJ += $(BUILDDIR)/sysfont.o
 OTHER_SRC += $(FIRMLIB_SRC)
 
+ifeq ($(MODELNAME),yp3)
+$(BUILDDIR)/firmware/common/unicode.o: $(BUILDDIR)/codepage-xip.h
+$(BUILDDIR)/codepage-xip.h: $(TOOLSDIR)/codepages $(TOOLSDIR)/mkcodepage_xip.py
+	$(call PRINTS,GEN codepage-xip.h)python3 $(TOOLSDIR)/mkcodepage_xip.py $(TOOLSDIR)/codepages $@
+endif
+
 FIRMLIB = $(BUILDDIR)/firmware/libfirmware.a
 
 ifeq ($(SYSFONT),)

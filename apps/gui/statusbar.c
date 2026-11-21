@@ -30,6 +30,9 @@
 #include "icons.h"
 #include "powermgmt.h"
 #include "usb.h"
+#ifdef HAVE_BLUETOOTH
+#include "bluetooth.h"
+#endif
 #include "led.h"
 #include "screen_access.h"
 
@@ -119,6 +122,19 @@
                                                 STATUSBAR_LOCKM_WIDTH + \
                                                 7*ICONS_SPACING
 #define STATUSBAR_LOCKR_WIDTH                   5
+#ifdef HAVE_BLUETOOTH
+#ifdef HAS_REMOTE_BUTTON_HOLD
+#define STATUSBAR_BT_X_POS                      STATUSBAR_LOCKR_X_POS + \
+                                                STATUSBAR_LOCKR_WIDTH + \
+                                                ICONS_SPACING
+#else
+#define STATUSBAR_BT_X_POS                      STATUSBAR_LOCKM_X_POS + \
+                                                STATUSBAR_LOCKM_WIDTH + \
+                                                ICONS_SPACING
+#endif
+#define STATUSBAR_BT_WIDTH                      7
+#define STATUSBAR_BT_BATTERY_WIDTH              3
+#endif
 
 #if (CONFIG_LED == LED_VIRTUAL) || defined(HAVE_REMOTE_LCD)
 #define STATUSBAR_DISK_WIDTH                    12
@@ -147,6 +163,10 @@ static void gui_statusbar_led(struct screen * display);
 #endif
 #ifdef HAVE_RECORDING
 static void gui_statusbar_icon_recording_info(struct screen * display);
+#endif
+#ifdef HAVE_BLUETOOTH
+static void gui_statusbar_icon_bluetooth(struct screen * display, int status,
+                                         int percent);
 #endif
 #if CONFIG_RTC
 static void gui_statusbar_time(struct screen * display, struct tm *time);
@@ -238,6 +258,10 @@ static struct screen * sb_fill_bar_info(struct gui_statusbar * bar)
 #ifdef HAS_REMOTE_BUTTON_HOLD
     bar->info.keylockremote = remote_button_hold();
 #endif
+#ifdef HAVE_BLUETOOTH
+    bar->info.bt_status = bt_status();
+    bar->info.bt_battery = bt_battery();
+#endif
     bar->info.repeat = global_settings.repeat_mode;
     bar->info.playmode = current_playmode();
 #if CONFIG_RTC
@@ -318,6 +342,11 @@ void gui_statusbar_draw(struct gui_statusbar * bar, bool force_redraw, struct vi
 #ifdef HAS_REMOTE_BUTTON_HOLD
         if (bar->info.keylockremote)
             gui_statusbar_icon_lock_remote(display);
+#endif
+#ifdef HAVE_BLUETOOTH
+        if (bar->info.bt_status != BT_STATUS_OFF)
+            gui_statusbar_icon_bluetooth(display, bar->info.bt_status,
+                                         bar->info.bt_battery);
 #endif
 #if CONFIG_RTC
         gui_statusbar_time(display, bar->time);
@@ -551,6 +580,44 @@ static void gui_statusbar_icon_lock_remote(struct screen * display)
     display->mono_bitmap(bitmap_icons_5x8[Icon_Lock_Remote],
                          STATUSBAR_LOCKR_X_POS, STATUSBAR_Y_POS,
                          STATUSBAR_LOCKR_WIDTH, SB_ICON_HEIGHT);
+}
+#endif
+
+#ifdef HAVE_BLUETOOTH
+/*
+ * Print the Bluetooth rune, between dots once a device is connected. A
+ * headset that reports its battery shows it as a small upright battery in
+ * place of the dots (there is no room for both before the clock), left of
+ * the rune: to its right, an empty battery looked like a 0 of the clock.
+ */
+static void gui_statusbar_icon_bluetooth(struct screen * display, int status,
+                                         int percent)
+{
+    int x = STATUSBAR_BT_X_POS;
+    int height = STATUSBAR_BATTERY_HEIGHT - 1;  /* below the terminal */
+
+    if (percent < 0)
+    {
+        display->mono_bitmap(bitmap_icons_7x8[status == BT_STATUS_ON ?
+                             Icon_Bluetooth : Icon_Bluetooth_Connected],
+                             x, STATUSBAR_Y_POS,
+                             STATUSBAR_BT_WIDTH, SB_ICON_HEIGHT);
+        return;
+    }
+    /* the battery, a gap, then the rune without its blank columns */
+    display->mono_bitmap_part(bitmap_icons_7x8[Icon_Bluetooth], 1, 0,
+                              STATUSBAR_BT_WIDTH,
+                              x + STATUSBAR_BT_BATTERY_WIDTH + 1,
+                              STATUSBAR_Y_POS, STATUSBAR_BT_WIDTH - 2,
+                              SB_ICON_HEIGHT);
+    display->drawpixel(x + STATUSBAR_BT_BATTERY_WIDTH / 2, STATUSBAR_Y_POS);
+    display->drawrect(x, STATUSBAR_Y_POS + 1,
+                      STATUSBAR_BT_BATTERY_WIDTH, height);
+    /* rounded up: only 0% is empty, which also reads less like a 0 */
+    int fill = (percent * (height - 2) + 99) / 100;
+    if (fill > 0)
+        display->vline(x + 1, STATUSBAR_Y_POS + height - fill,
+                       STATUSBAR_Y_POS + height - 1);
 }
 #endif
 

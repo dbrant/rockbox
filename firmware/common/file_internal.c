@@ -28,6 +28,7 @@
 #include "rb_namespace.h"
 #include "string-extra.h"
 #include "rbunicode.h"
+#include "kernel.h"
 
 /* Define LOGF_ENABLE to enable logf output in this file */
 //#define LOGF_ENABLE
@@ -180,6 +181,11 @@ int uncached_readdir_internal(struct filestr_base *stream,
                               struct file_base_info *infop,
                               struct fat_direntry *fatent)
 {
+#ifdef HAVE_FS_SCAN_YIELD
+    /* Long directory scans (browsing, path lookups) would otherwise hold
+       the CPU longer than a small PCM buffer lasts. */
+    yield();
+#endif
     return fat_readdir(&stream->fatstr, &infop->fatfile.e,
                        filestr_get_cache(stream), fatent);
 }
@@ -263,6 +269,9 @@ int uncached_readdir_dirent(struct filestr_base *stream,
                             struct dirscan_info *scanp,
                             struct DIRENT *entry)
 {
+#ifdef HAVE_FS_SCAN_YIELD
+    yield();    /* as in uncached_readdir_internal() */
+#endif
     struct fat_direntry fatent;
     int rc = fat_readdir(&stream->fatstr, &scanp->fatscan,
                          filestr_get_cache(stream), &fatent);

@@ -33,6 +33,7 @@
 #include "dsp_core.h"
 #include "metadata.h"
 #include "settings.h"
+#include "devlog.h"
 
 /* Define LOGF_ENABLE to enable logf output in this file */
 /*#define LOGF_ENABLE*/
@@ -99,7 +100,11 @@ static struct queue_sender_list codec_queue_sender_list SHAREDBSS_ATTR;
 #define WORKAROUND_FS13060 0
 #endif
 
+#ifdef TARGET_CODEC_STACK_SIZE
+static long codec_stack[TARGET_CODEC_STACK_SIZE/sizeof(long)] IBSS_ATTR;
+#else
 static long codec_stack[(DEFAULT_STACK_SIZE + 0x2000 + WORKAROUND_FS13060)/sizeof(long)] IBSS_ATTR;
+#endif
 static const char codec_thread_name[] = "codec";
 
 static void unload_codec(void);
@@ -221,12 +226,79 @@ void codec_thread_do_callback(void (*fn)(void), unsigned int *id)
 }
 
 
+/* How long the codec sleeps when the PCM buffer has no room. A small ring
+ * (TARGET_PCM_BUFFER_SIZE) can't lose a big part of itself to this. */
+#ifndef CODEC_PCMBUF_FULL_WAIT
+#define CODEC_PCMBUF_FULL_WAIT (HZ/20)
+#endif
+
+#ifdef HAVE_DEVLOG
+/* Dev builds: a hash of the codec's output (before the DSP) over the first
+ * DEV_HASH_FRAMES frames of each track played from its start without a
+ * seek, logged when they are done or the track ends: a file must give the
+ * same hash for the same frame count on every play (torture compares). */
+#define DEV_HASH_FRAMES 200000
+static struct {
+    uint32_t hash;
+    long frames;                /* hashed so far; -1: not this track */
+    int depth, stereo;          /* DSP_SET_SAMPLE_DEPTH, DSP_SET_STEREO_MODE */
+} dev_hash = { .frames = -1 };
+
+/* FNV-1a over the samples in frame order: the same however the codec
+ * splits its output into calls */
+static inline __attribute__((always_inline))
+uint32_t dev_hash_mix(uint32_t h, const void *p, int i)
+{
+    uint32_t v = dev_hash.depth > 16 ? (uint32_t)((const int32_t *)p)[i]
+                                     : (uint16_t)((const int16_t *)p)[i];
+    return (h ^ v) * 16777619u;
+}
+
+static void dev_hash_log(void)
+{
+    if (dev_hash.frames > 0) {
+        const char *path = ci.id3 ? ci.id3->path : "?";
+        size_t len = strlen(path);
+        dev_msg("decode", "%08lx %ld %s", (unsigned long)dev_hash.hash,
+                    dev_hash.frames, len > 60 ? path + len - 60 : path);
+    }
+    dev_hash.frames = -1;
+}
+
+/* In SRAM: from XIP flash this loop took most of the CPU at 192 MHz and
+ * the output underran */
+static void ICODE_ATTR __attribute__((noinline))
+dev_hash_add(const void *ch1, const void *ch2, int count)
+{
+    if (dev_hash.frames < 0)
+        return;
+    if (count > DEV_HASH_FRAMES - dev_hash.frames)
+        count = DEV_HASH_FRAMES - dev_hash.frames;
+    /* samples in ch1, and ch2's beside them when the channels are apart */
+    int n = dev_hash.stereo == STEREO_INTERLEAVED ? 2 * count : count;
+    const void *right = dev_hash.stereo == STEREO_NONINTERLEAVED ? ch2 : NULL;
+    uint32_t h = dev_hash.hash;
+    for (int i = 0; i < n; i++) {
+        h = dev_hash_mix(h, ch1, i);
+        if (right)
+            h = dev_hash_mix(h, right, i);
+    }
+    dev_hash.hash = h;
+    dev_hash.frames += count;
+    if (dev_hash.frames >= DEV_HASH_FRAMES)
+        dev_hash_log();
+}
+#endif
+
 /** --- codec API callbacks --- **/
 
 static void codec_pcmbuf_insert_callback(
         const void *ch1, const void *ch2, int count)
 {
     struct dsp_buffer src;
+#ifdef HAVE_DEVLOG
+    dev_hash_add(ch1, ch2, count);
+#endif
     src.remcount  = count;
     src.pin[0]    = ch1;
     src.pin[1]    = ch2;
@@ -245,7 +317,7 @@ static void codec_pcmbuf_insert_callback(
 
             /* It may be awhile before space is available but we want
                "instant" response to any message */
-            queue_wait_w_tmo(&codec_queue, NULL, HZ/20);
+            queue_wait_w_tmo(&codec_queue, NULL, CODEC_PCMBUF_FULL_WAIT);
         }
         else
         {
@@ -338,6 +410,9 @@ static bool codec_seek_buffer_callback(size_t newpos)
 static void codec_seek_complete_callback(void)
 {
     logf("seek_complete");
+#ifdef HAVE_DEVLOG
+    dev_hash.frames = -1;       /* seeked: not the track's start */
+#endif
 
     /* Clear DSP */
     dsp_configure(ci.dsp, DSP_FLUSH, 0);
@@ -358,6 +433,12 @@ static void codec_seek_complete_callback(void)
 
 static void codec_configure_callback(int setting, intptr_t value)
 {
+#ifdef HAVE_DEVLOG
+    if (setting == DSP_SET_SAMPLE_DEPTH)
+        dev_hash.depth = value;
+    else if (setting == DSP_SET_STEREO_MODE)
+        dev_hash.stereo = value;
+#endif
     dsp_configure(ci.dsp, setting, value);
 }
 
@@ -500,6 +581,7 @@ static void load_codec(const struct codec_load_info *ev_data)
     }
 
     /* Failed - get rid of it */
+    dev_log("codec load %d failed: status %d", data.afmt, status);
     unload_codec();
 }
 
@@ -532,9 +614,17 @@ static void run_codec(void)
 
         /* Pin the codec's audio data in place */
         buf_pin_handle(ci.audio_hid, true);
+#ifdef HAVE_DEVLOG
+        dev_hash.hash = 2166136261u;
+        dev_hash.frames = ci.id3->elapsed == 0 && ci.id3->offset == 0 ? 0 : -1;
+#endif
     }
 
     status = codec_run_proc();
+#ifdef HAVE_DEVLOG
+    if (!encoder)
+        dev_hash_log();
+#endif
 
     if (!encoder)
     {
@@ -644,6 +734,9 @@ void INIT_ATTR codec_thread_init(void)
     /* Init API */
     ci.dsp              = dsp_get_config(CODEC_IDX_AUDIO);
     ci.codec_get_buffer = codec_get_buffer_callback;
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+    ci.codec_get_extra_buffer = audio_codec_extra_buffer;
+#endif
     ci.pcmbuf_insert    = codec_pcmbuf_insert_callback;
     ci.set_elapsed      = audio_codec_update_elapsed;
     ci.read_filebuf     = codec_filebuf_callback;

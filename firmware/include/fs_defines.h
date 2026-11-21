@@ -37,7 +37,9 @@
 /* limits for number of open descriptors - if you increase these values, make
    certain that the disk cache has enough available buffers */
 
-#if MEMORYSIZE < 8
+#if defined(MAX_OPEN_FILES) && defined(MAX_OPEN_DIRS)
+/* target override (config/<target>.h) */
+#elif MEMORYSIZE < 8
 #define MAX_OPEN_FILES  11
 #define MAX_OPEN_DIRS   12
 #else
@@ -91,7 +93,9 @@
  * volumes that would slow cache probing. IOC_MAP_NUM_ENTRIES is the number
  * for each map per volume. The buffers themselves are shared.
  */
-#if MEMORYSIZE < 8
+#if defined(DC_NUM_ENTRIES) && defined(DC_MAP_NUM_ENTRIES)
+/* target override (config/<target>.h) */
+#elif MEMORYSIZE < 8
 #define DC_NUM_ENTRIES      32
 #define DC_MAP_NUM_ENTRIES  128
 #else

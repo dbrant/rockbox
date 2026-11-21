@@ -59,7 +59,10 @@ struct event_queue audio_queue SHAREDBSS_ATTR;
 static struct queue_sender_list audio_queue_sender_list SHAREDBSS_ATTR;
 
 /* Audio thread */
-static long audio_stack[(DEFAULT_STACK_SIZE + 0x1000)/sizeof(long)];
+#ifndef TARGET_AUDIO_STACK_SIZE
+#define TARGET_AUDIO_STACK_SIZE (DEFAULT_STACK_SIZE + 0x1000)
+#endif
+static long audio_stack[TARGET_AUDIO_STACK_SIZE/sizeof(long)];
 static const char audio_thread_name[] = "audio";
 unsigned int audio_thread_id = 0;
 
@@ -84,6 +87,14 @@ static void NORETURN_ATTR audio_thread(void)
         case Q_AUDIO_REMAKE_AUDIO_BUFFER:
 #ifdef HAVE_DISK_STORAGE
         case Q_AUDIO_UPDATE_WATERMARK:
+#endif
+#ifdef YP3_SL6801
+        /* A skip while stopped (a headset's or keyboard's Next/Previous
+         * reach audio_skip() from any screen) must still zero its
+         * skip_offset: left over, every later play showed the skip preview
+         * at 0/0 until another skip (TS17 torture 17 step 60) */
+        case Q_AUDIO_SKIP:
+        case Q_AUDIO_DIR_SKIP:
 #endif
             audio_playback_handler(&ev);
             break;

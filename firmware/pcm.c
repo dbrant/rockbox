@@ -83,11 +83,17 @@ static volatile bool pcm_is_ready[PCM_SINK_NUM] SHAREDBSS_ATTR = { false };
 #ifdef USB_ENABLE_IAP
 extern struct pcm_sink iap_pcm_sink;
 #endif
+#ifdef HAVE_BLUETOOTH
+extern struct pcm_sink bt_pcm_sink;
+#endif
 
 static struct pcm_sink* sinks[PCM_SINK_NUM] = {
     [PCM_SINK_BUILTIN] = &builtin_pcm_sink,
 #ifdef USB_ENABLE_IAP
     [PCM_SINK_IAP] = &iap_pcm_sink,
+#endif
+#ifdef HAVE_BLUETOOTH
+    [PCM_SINK_BT] = &bt_pcm_sink,
 #endif
 };
 static enum pcm_sink_ids cur_sink SHAREDBSS_ATTR = PCM_SINK_BUILTIN;
@@ -172,7 +178,7 @@ static void pcm_wait_for_init(void)
  *
  * Used for recording and playback.
  */
-static void pcm_peak_peeker(const int16_t *p, int count,
+static void ICODE_ATTR pcm_peak_peeker(const int16_t *p, int count,
                             struct pcm_peaks *peaks)
 {
     uint32_t peak_l = 0, peak_r = 0;
@@ -341,6 +347,11 @@ bool pcm_switch_sink(enum pcm_sink_ids sink)
      */
     ASSUME(cur_sink < PCM_SINK_NUM);
 
+#ifdef HAVE_PCM_SINK_POWER
+    enum pcm_sink_ids old_id = cur_sink;
+    pcm_sink_power(sink, true);
+#endif
+
     /* save current sink before switching */
     struct pcm_sink* old_sink = sinks[cur_sink];
 
@@ -363,6 +374,9 @@ bool pcm_switch_sink(enum pcm_sink_ids sink)
         }
     }
 
+#ifdef HAVE_PCM_SINK_POWER
+    pcm_sink_power(old_id, false);
+#endif
     return true;
 }
 

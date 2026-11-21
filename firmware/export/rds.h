@@ -41,6 +41,12 @@ enum rds_info_id
     RDS_INFO_PS,        /* programme service name */
     RDS_INFO_RT,        /* radio text */
     RDS_INFO_CT,        /* clock time */
+#ifdef HAVE_RDS_EXTENDED
+    RDS_INFO_PTY,       /* programme type name (RBDS names in the US) */
+    RDS_INFO_CALL,      /* call letters from the PI code (US) */
+    RDS_INFO_ARTIST,    /* RadioText Plus ITEM.ARTIST */
+    RDS_INFO_TITLE,     /* RadioText Plus ITEM.TITLE */
+#endif
 };
 
 enum rds_code_table

@@ -145,6 +145,7 @@ MENUITEM_SETTING(next_folder, &global_settings.next_folder, NULL);
 MENUITEM_SETTING(constrain_next_folder,
                  &global_settings.constrain_next_folder, NULL);
 
+#ifndef HAVE_MINIMAL_AUDIO_PROFILE  /* no cuesheet support: setting removed */
 static int cuesheet_callback(int action,
                              const struct menu_item_ex *this_item,
                              struct gui_synclist *this_list)
@@ -159,6 +160,7 @@ static int cuesheet_callback(int action,
     return action;
 }
 MENUITEM_SETTING(cuesheet, &global_settings.cuesheet, cuesheet_callback);
+#endif
 
 #ifdef HAVE_HEADPHONE_DETECTION
 MENUITEM_SETTING(unplug_mode, &global_settings.unplug_mode, NULL);
@@ -199,7 +201,10 @@ MAKE_MENU(playback_settings,ID2P(LANG_PLAYBACK),0,
 #ifdef HAVE_SPDIF_POWER
           &spdif_enable,
 #endif
-          &next_folder, &constrain_next_folder, &cuesheet
+          &next_folder, &constrain_next_folder
+#ifndef HAVE_MINIMAL_AUDIO_PROFILE
+          ,&cuesheet
+#endif
 #ifdef HAVE_HEADPHONE_DETECTION
          ,&unplug_menu
 #endif

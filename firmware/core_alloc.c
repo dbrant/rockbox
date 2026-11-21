@@ -21,6 +21,7 @@
 #include <string.h>
 #include "system.h"
 #include "core_alloc.h"
+#include "core_alloc_top.h"
 #include "buflib.h"
 
 /* not static so it can be discovered by core_get_data() */
@@ -48,7 +49,11 @@ extern unsigned char audiobufend[];
 #endif
 
 #else /* PLATFORM_HOSTED */
+#ifdef TARGET_SIMULATOR_HEAP_SIZE
+static unsigned char audiobuffer[TARGET_SIMULATOR_HEAP_SIZE];
+#else
 static unsigned char audiobuffer[(MEMORYSIZE-1)*1024*1024];
+#endif
 unsigned char *audiobufend = audiobuffer + sizeof(audiobuffer);
 #endif
 
@@ -91,6 +96,13 @@ int core_alloc_ex(size_t size, struct buflib_callbacks *ops)
 {
     return buflib_alloc_ex(&core_ctx, size, ops);
 }
+
+#if defined(HAVE_CORE_ALLOC_TOP) && CONFIG_BUFLIB_BACKEND == BUFLIB_BACKEND_MEMPOOL
+int core_alloc_top(size_t size)
+{
+    return buflib_alloc_top(&core_ctx, size, NULL);
+}
+#endif
 
 size_t core_available(void)
 {

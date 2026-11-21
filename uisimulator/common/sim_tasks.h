@@ -32,4 +32,7 @@ void sim_trigger_external(bool inserted);
 #endif
 void sim_trigger_hp(bool inserted);
 void sim_trigger_lo(bool inserted);
+#ifdef HAVE_BLUETOOTH
+void bt_simtest_init(void);
+#endif
 #endif

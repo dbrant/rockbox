@@ -23,6 +23,16 @@
 #include "usb_class_driver.h"
 
 void usb_serial_send(const unsigned char *data, int length);
+int usb_serial_send_space(void);
+#ifdef HAVE_DEVLOG
+/* Bytes queued and in transit, and sends the driver refused (data left
+ * "in transit" with no transfer to complete it) */
+void usb_serial_dev_state(int *queued, int *in_transit, unsigned *refused);
+#endif
+#ifdef USB_SERIAL_RX_HOOK
+/* Target hook for received data, called from the USB thread. */
+void USB_SERIAL_RX_HOOK(const unsigned char *data, int length);
+#endif
 
 extern struct usb_class_driver usb_cdrv_serial;
 

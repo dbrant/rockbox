@@ -34,6 +34,9 @@
 #include "crc32.h"
 #include "sound.h"
 #include "settings.h"
+#ifdef HAVE_BLUETOOTH
+#include "bluetooth_policy.h"
+#endif
 #ifdef HAVE_COMPOSITE_VIDEO_OUT
 #include "videoout.h"
 #endif
@@ -754,6 +757,14 @@ int settings_save(void)
     return 0;
 }
 
+#ifdef HAVE_DEVLOG
+/* Every setting to PATH, for tests that restore them afterwards. */
+bool settings_dev_save_all(const char *path)
+{
+    return settings_write_config(path, SETTINGS_SAVE_ALL);
+}
+#endif
+
 bool settings_save_config(int options)
 {
     char filename[MAX_PATH];
@@ -1145,6 +1156,9 @@ void settings_apply(bool read_disk)
 #ifdef HAVE_USB_CHARGING_ENABLE
     usb_charging_enable(global_settings.usb_charging);
 #endif
+#ifdef HAVE_CHARGE_LIMIT
+    set_charge_limit(global_settings.charge_limit);
+#endif
 
 #ifdef HAVE_TOUCHSCREEN
     touchscreen_set_mode(global_settings.touch_mode);
@@ -1162,6 +1176,9 @@ void settings_apply(bool read_disk)
 #endif
 #if defined(DX50) || defined(DX90)
     ibasso_set_governor(global_settings.governor);
+#endif
+#ifdef HAVE_BLUETOOTH
+    bluetooth_apply_setting();
 #endif
 
     /* This should stay last */

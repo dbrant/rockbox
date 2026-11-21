@@ -29,6 +29,9 @@
 #include "usb.h"
 #include "mv.h"
 #include "ata_idle_notify.h"
+#ifdef HAVE_BLUETOOTH
+#include "sim_tasks.h"      /* bt_simtest_init() */
+#endif
 
 #ifdef WIN32
 #include <windows.h>
@@ -137,6 +140,9 @@ void sim_tasks_init(void)
 
     create_thread(sim_thread, sim_thread_stack, sizeof(sim_thread_stack), 0,
                   sim_thread_name IF_PRIO(,PRIORITY_BACKGROUND) IF_COP(,CPU));
+#ifdef HAVE_BLUETOOTH
+    bt_simtest_init();
+#endif
 }
 
 void sim_trigger_screendump(void)

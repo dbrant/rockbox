@@ -58,7 +58,10 @@
 #define DOWNMIX_BUF_IBSS
 #endif
 
-#if defined(CPU_COLDFIRE) || defined(CPU_PP)
+#if defined(CPU_COLDFIRE) || defined(CPU_PP) || \
+    (defined(CONFIG_CPU) && CONFIG_CPU == SL6801)
+/* SL6801: from XIP, a non-unity mix (pause fade) outran the 2.9 ms DMA
+   period and stretched the audio by ~20% */
 #define MIXER_CALLBACK_ICODE    ICODE_ATTR
 #else
 #define MIXER_CALLBACK_ICODE

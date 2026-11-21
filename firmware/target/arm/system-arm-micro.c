@@ -32,6 +32,19 @@ struct armv7m_exception_frame
     unsigned long xpsr;
 };
 
+#if CONFIG_CPU == SL6801
+/* Keep UIE in this translation unit for the weak aliases below; branch
+ * without a C prologue so exception LR and a damaged stack remain intact. */
+void __attribute__((naked)) UIE(void)
+{
+    asm volatile ("b yp3_fault_unhandled_entry");
+}
+
+void __attribute__((naked)) __div0(void)
+{
+    asm volatile ("b yp3_fault_divzero_entry");
+}
+#else
 void UIE(void)
 {
     while (1);
@@ -41,6 +54,7 @@ void __div0(void)
 {
     while (1);
 }
+#endif
 
 void __aeabi_idiv0(void) __attribute__((alias("__div0")));
 void __aeabi_ldiv0(void) __attribute__((alias("__div0")));

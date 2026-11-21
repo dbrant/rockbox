@@ -350,10 +350,12 @@ static int info_action_callback(int action, struct gui_synclist *lists)
     {
         action = ACTION_REDRAW;
         info->new_data = true;
+#ifndef HAVE_NO_FREE_RECOUNT
         splash(0, ID2P(LANG_SCANNING_DISK));
 #if (CONFIG_PLATFORM & PLATFORM_NATIVE)
         for (int i = 0; i < NUM_VOLUMES; i++)
             volume_recalc_free(IF_MV(i));
+#endif
 #endif
         gui_synclist_speak_item(lists);
     }
@@ -510,6 +512,9 @@ MAKE_MENU(main_menu_, ID2P(LANG_SETTINGS), NULL,
         Icon_Submenu_Entered,
         &sound_settings,
         &playback_settings,
+#ifdef HAVE_BLUETOOTH
+        &bluetooth_menu,
+#endif
         &settings_menu_item, &theme_menu,
 #ifdef HAVE_RECORDING
         &recording_settings,

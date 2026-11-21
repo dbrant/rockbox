@@ -45,8 +45,27 @@
    Adapted to Rockbox by Jens Arnold
 */
  
+#include "config.h"
 #include <stdlib.h>
 
+#if MEMORYSIZE < 2
+/* Sub-2 MB targets: xorshift32, 4 bytes of state instead of MT19937's
+   2.5 KB. Plenty for shuffle and games. */
+static unsigned long xs = 2463534242UL;
+
+void srand(unsigned int seed)
+{
+    xs = seed ? seed : 2463534242UL;
+}
+
+int rand(void)
+{
+    xs ^= xs << 13;
+    xs ^= xs >> 17;
+    xs ^= xs << 5;
+    return ((unsigned int)xs) >> 1;
+}
+#else
 /* Period parameters */
 #define N            624
 #define M            397
@@ -117,3 +136,4 @@ int rand(void)
 
     return ((unsigned int)y) >> 1;
 }
+#endif /* MEMORYSIZE */

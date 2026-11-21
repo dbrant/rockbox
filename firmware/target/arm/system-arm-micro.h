@@ -98,10 +98,14 @@ static inline unsigned long get_interrupt_number(void)
     return ipsr & 0x1ff;
 }
 
+/* Targets that count the time spent in WFI (HAVE_THREAD_CPU_ACCOUNTING)
+ * define their own */
+#ifndef HAVE_THREAD_CPU_ACCOUNTING
 static inline void core_sleep(void)
 {
     asm volatile ("wfi");
     enable_irq();
 }
+#endif
 
 #endif /* SYSTEM_ARM_MICRO_H */

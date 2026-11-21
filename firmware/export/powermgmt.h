@@ -160,6 +160,9 @@ void set_poweroff_timeout(int timeout);
 void set_battery_capacity(int capacity); /* set local battery capacity value */
 #endif
 int get_battery_capacity(void); /* get local battery capacity value */
+#ifdef HAVE_CHARGE_LIMIT
+void set_charge_limit(int percent); /* stop charging at this level; 100 = full */
+#endif
 
 void set_sleeptimer_duration(int minutes);
 bool get_sleep_timer_active(void);

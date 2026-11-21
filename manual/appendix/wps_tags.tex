@@ -128,6 +128,16 @@ show the information for the next song to be played.
     \config{\%bc} & ``c'' if the unit is currently charging the battery (only on
                     targets that have software charge control or monitoring)\\
     \config{\%bs} & Remaining time of the sleep timer (if it is set)\\
+    \opt{bluetooth}{%
+    \config{\%Bt} & Bluetooth status, for conditionals:
+                    \config{\%?Bt<off|on|connected|streaming>}
+                    (``on'': powered, no audio device connected;
+                    ``streaming'': audio is being sent)\\
+    \config{\%Bb} & Battery level of the Bluetooth headset in percent,
+                    empty if it does not report one. As a conditional,
+                    the levels are split like \config{\%bl}'s: the first
+                    option is for ``unknown'', the last for 100\%\\
+    }%
   \end{tagmap}
 
 \section{Information about the file}

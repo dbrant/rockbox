@@ -34,6 +34,12 @@ int tagtree_export(void);
 int tagtree_import(void);
 void tagtree_init(void) INIT_ATTR;
 bool tagtree_ready(void);
+#ifdef TAGCACHE_LOWMEM
+bool tagtree_out_of_memory(void);
+#endif
+#ifdef TAGCACHE_LOWMEM
+void tagtree_release(struct tree_context *c);
+#endif
 int tagtree_enter(struct tree_context* c, bool is_visible);
 void tagtree_exit(struct tree_context* c, bool is_visible);
 int tagtree_load(struct tree_context* c);

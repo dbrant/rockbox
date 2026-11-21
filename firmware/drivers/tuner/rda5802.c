@@ -31,6 +31,9 @@
 #include "fmradio_i2c.h" /* physical interface driver */
 #include "audio.h"
 #include "backlight.h"
+#ifdef RDA5802_RDS
+#include "rds.h"
+#endif
 
 #define SEEK_THRESHOLD 0x16
 
@@ -96,14 +99,36 @@
     #define STATUSRSSI_RSSIr(x) (((x) & STATUSRSSI_RSSI) >> 9)
 #define STATUSRSSI_FM_TRUE  (0x1 << 8)
 
+#ifdef RDA5802_RDS
+/* RDS (RDA5807 datasheet): blocks A..D at 0xC..0xF, error levels for A and
+ * B only (0: none, 1: 1-2 corrected, 2: 3-5 corrected, 3: uncorrectable) */
+#define RDSA        0xC
+#define POWERCFG_RDS_EN     (0x1 <<  3)
+#define READCHAN_RDSR       (0x1 << 15) /* a new group is in 0xC..0xF */
+#define STATUSRSSI_BLERA    (0x3 <<  2)
+    #define STATUSRSSI_BLERAr(x) (((x) & STATUSRSSI_BLERA) >> 2)
+#define STATUSRSSI_BLERB    (0x3 <<  0)
+    #define STATUSRSSI_BLERBr(x) (((x) & STATUSRSSI_BLERB) >> 0)
+#define RDS_BLER_MAX        1
+#endif /* RDA5802_RDS */
+
 static bool tuner_present = false;
 
 static uint16_t cache[16] = {
-    [POWERCFG] =    0xC401, /* DHIZ, DMUTE, CLK_DIRECT_MODE, ENABLE */
+#ifndef RDA5802_POWERCFG_INIT
+#define RDA5802_POWERCFG_INIT 0xC401
+#endif
+    [POWERCFG] =    RDA5802_POWERCFG_INIT, /* DHIZ, DMUTE, CLK_DIRECT_MODE,
+                               CLK_MODE=32.768kHz, ENABLE; the reference
+                               clock is board wiring: targets override */
     [CHANNEL] =     0x0000, /* - */
     [SYSCONFIG1] =  0x0200, /* SYSCONFIG1_SOFTMUTE_EN */
-    [SYSCONFIG2] =  0x867F, /* INT_MODE (def), SEEKTH=1100b, LNA_PORT_SEL=LNAN,
-                               LNA_ICSEL=3.0mA, VOLUME=max */
+#ifndef RDA5802_SYSCONFIG2_INIT
+#define RDA5802_SYSCONFIG2_INIT 0x867F
+#endif
+    [SYSCONFIG2] =  RDA5802_SYSCONFIG2_INIT, /* INT_MODE (def), SEEKTH=1100b,
+                               LNA_PORT_SEL=LNAN, LNA_ICSEL=3.0mA, VOLUME=max;
+                               the LNA port is board wiring: targets override */
     [SYSCONFIG3] =  0x8000, /* RSVD */
     [SYSCONFIG4] =  0x4712, /* TH_SOFRBLEND=34dB, 65M_50M MODE=65~76MHz, RSVD, SEEK_TH_OLD=4, SOFTBLEND_EN */
     [SYSCONFIG5] =  0x5EC6, /* FREQ_DIRECT=24262kHz (unused) */
@@ -173,9 +198,16 @@ static void rda5802_write_set(int reg, uint16_t mask)
     rda5802_write_reg(reg, cache[reg] | mask);
 }
 
+#ifdef RDA5802_RDS
+static void rda5802_rds_powerup(bool on);
+#endif
+
 static void rda5802_sleep(int snooze)
 {
     if (snooze) {
+#ifdef RDA5802_RDS
+        rda5802_rds_powerup(false);
+#endif
         rda5802_write_clear(POWERCFG, POWERCFG_ENABLE);
     }
     else {
@@ -185,7 +217,76 @@ static void rda5802_sleep(int snooze)
     rda5802_write_cache();
     if(snooze)
         tuner_power(false);
+#ifdef RDA5802_RDS
+    else
+        rda5802_rds_powerup(true);
+#endif
 }
+
+#ifdef RDA5802_RDS
+/* Group polling. The I2C transfers busy-wait and threads are cooperative,
+ * so a poll never interleaves with a tuner_set()/tuner_get() transfer.
+ * RDSR stays high for about half of each group: read the blocks on its
+ * rising edge, and only RDSR (one register) otherwise. */
+static void rda5802_rds_process(void)
+{
+    static bool rdsr_last = false;
+
+    if (!tuner_powered())
+        return;
+    bool rdsr = rda5802_read_reg(READCHAN) & READCHAN_RDSR;
+    if (rdsr && !rdsr_last) {
+        rda5802_read(RDSA - READCHAN + 4);
+        uint16_t status = cache[STATUSRSSI];
+        if (STATUSRSSI_BLERAr(status) <= RDS_BLER_MAX &&
+            STATUSRSSI_BLERBr(status) <= RDS_BLER_MAX)
+            rds_process(&cache[RDSA]);
+    }
+    rdsr_last = rdsr;
+}
+
+static struct event_queue rds_queue;
+/* The clock-time path needs ~170 bytes of frames, plus one exception frame
+ * (threads run on the PSP); the poll alone peaked at 154 */
+static uint32_t rds_stack[512 / sizeof(uint32_t)];
+
+enum {
+    Q_POWERUP,
+};
+
+static void NORETURN_ATTR rds_thread(void)
+{
+    /* start up frozen */
+    int timeout = TIMEOUT_BLOCK;
+    struct queue_event ev;
+
+    while (true) {
+        queue_wait_w_tmo(&rds_queue, &ev, timeout);
+        switch (ev.id) {
+            case Q_POWERUP:
+                timeout = ev.data ? CONFIG_RDS_POLL_TICKS : TIMEOUT_BLOCK;
+                break;
+            case SYS_TIMEOUT:
+                rda5802_rds_process();
+                break;
+        }
+    }
+}
+
+/* true after the tuner powers up, false before it powers down */
+static void rda5802_rds_powerup(bool on)
+{
+    queue_post(&rds_queue, Q_POWERUP, on);
+}
+
+static void rda5802_rds_init(void)
+{
+    rds_init();
+    queue_init(&rds_queue, false);
+    create_thread(rds_thread, rds_stack, sizeof(rds_stack), 0, "rds"
+        IF_PRIO(, PRIORITY_PLAYBACK) IF_COP(, CPU));
+}
+#endif /* RDA5802_RDS */
 
 bool rda5802_detect(void)
 {
@@ -210,6 +311,10 @@ void rda5802_init(void)
 {
     if (rda5802_detect()) {
         tuner_present = true;
+#ifdef RDA5802_RDS
+        cache[POWERCFG] |= POWERCFG_RDS_EN;
+        rda5802_rds_init();
+#endif
 
         /* soft-reset */
         rda5802_write_set(POWERCFG, POWERCFG_SOFT_RESET);
@@ -303,10 +408,17 @@ int rda5802_set(int setting, int value)
 
     case RADIO_FREQUENCY:
         rda5802_set_frequency(value);
+#ifdef RDA5802_RDS
+        /* after the tune: the poll thread runs while it sleeps */
+        rds_reset();
+#endif
         break;
 
     case RADIO_SCAN_FREQUENCY:
         rda5802_set_frequency(value);
+#ifdef RDA5802_RDS
+        rds_reset();
+#endif
         return rda5802_tuned();
 
     case RADIO_MUTE:

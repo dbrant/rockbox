@@ -23,6 +23,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include "panic.h"
+#include "devlog.h"
 #include "lcd.h"
 #include "font.h"
 #include "debug.h"
@@ -128,6 +129,14 @@ void panicf( const char *fmt, ...)
 
     lcd_update();
     DEBUGF("%s", panic_buf);
+#ifdef HAVE_DEVLOG
+    dev_log("PANIC: %s", panic_buf);   /* survives the return to the loader */
+    /* Poor man's backtrace (map with addr2line) */
+    {
+        const uint32_t *sp = __builtin_frame_address(0);
+        dev_log_returns("  stack", sp, sp + 512, 16);
+    }
+#endif
 
 #ifdef HAVE_ADJUSTABLE_CPU_FREQ
     if (cpu_boost_lock())

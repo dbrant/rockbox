@@ -78,6 +78,10 @@ enum icons_7x8 {
     Icon_DownArrow,
     Icon_UpArrow,
     Icon_RepeatAB,
+#ifdef HAVE_BLUETOOTH
+    Icon_Bluetooth,
+    Icon_Bluetooth_Connected,
+#endif
     Icon7x8Last
 };
 

@@ -215,7 +215,11 @@ static int browser(void* param)
                         clear_screen_buffer(false);
 
                         /* Start initialisation */
+#ifdef TAGCACHE_LOWMEM
+                        tagcache_build_now(true);
+#else
                         tagcache_rebuild();
+#endif
                     }
 
                     /* Display building progress */
@@ -270,8 +274,25 @@ static int browser(void* param)
             }
             if (!tagcache_is_usable())
                 return GO_TO_PREVIOUS;
+#if defined(TAGCACHE_LOWMEM) && defined(TARGET_AUDIO_BUFFER_CAP)
+            /* Playback holds most of the heap: offer to stop it (a stop
+             * gives its buffer back, playback.c) and try again. */
+            if (!tagtree_ready() && tagtree_out_of_memory() &&
+                (audio_status() & AUDIO_STATUS_PLAY))
+            {
+                /* the prompt carries the advice: no splash after a No */
+                if (!yesno_pop(ID2P(LANG_TAGCACHE_STOP_PLAYBACK)))
+                    return GO_TO_PREVIOUS;
+                audio_stop();
+            }
+#endif
             if (!tagtree_ready())
             {
+#ifdef TAGCACHE_LOWMEM
+                if (tagtree_out_of_memory())
+                    splash(HZ*3, ID2P(LANG_TAGCACHE_NO_MEMORY));
+                else
+#endif
                 splashf(HZ*3, "%s\n%s", str(LANG_FILE_NOT_FOUND),
                         ROCKBOX_DIR "/tagnavi.config");
                 return GO_TO_PREVIOUS;
@@ -316,6 +337,12 @@ static int browser(void* param)
             last_db_dirlevel = tc->dirlevel;
             last_db_selection = tc->selected_item;
             tc->dirlevel = last_ft_dirlevel;
+#ifdef TAGCACHE_LOWMEM
+            /* Free the parsed menus; the next visit starts at the top. */
+            tagtree_release(tc);
+            last_db_dirlevel = 0;
+            last_db_selection = 0;
+#endif
         break;
 #endif
     }
@@ -499,6 +526,17 @@ static const struct root_items items[] = {
 };
 #define NUM_ITEMS (int)(sizeof(items)/sizeof(*items))
 
+#ifdef HAVE_DEVLOG
+/* The menu a main menu entry opens (Settings, System...), for the dev
+ * menu tree dump; NULL for screens that are not plain menus. */
+const struct menu_item_ex *root_menu_item_menu(int go_to)
+{
+    if (go_to < 0 || go_to >= NUM_ITEMS || items[go_to].function != miscscrn)
+        return NULL;
+    return items[go_to].param;
+}
+#endif
+
 static int item_callback(int action,
                          const struct menu_item_ex *this_item,
                          struct gui_synclist *this_list);
@@ -543,6 +581,18 @@ MENUITEM_RETURNVALUE(playlists, ID2P(LANG_PLAYLISTS), GO_TO_PLAYLISTS_SCREEN,
 MENUITEM_RETURNVALUE(system_menu_, ID2P(LANG_SYSTEM), GO_TO_SYSTEM_SCREEN,
                      NULL, Icon_System_menu);
 
+#ifdef HAVE_SELECT_POWER_KEY
+/* The centre key's long press is the power key, which games need: power off
+ * from the main menu instead (button-yp3.c). */
+static int shutdown_now(void)
+{
+    sys_poweroff();
+    return 0;
+}
+MENUITEM_FUNCTION(shutdown_item, 0, ID2P(LANG_SHUTDOWN_ITEM), shutdown_now,
+                  NULL, Icon_NOICON);
+#endif
+
 struct menu_item_ex root_menu_;
 static struct menu_callback_with_desc root_menu_desc = {
         item_callback, ID2P(LANG_ROCKBOX_TITLE), Icon_Rockbox };
@@ -566,6 +616,9 @@ static struct menu_table menu_table[] = {
     { "plugins", &rocks_browser },
     { "system_menu", &system_menu_ },
     { "shortcuts", &shortcut_menu },
+#ifdef HAVE_SELECT_POWER_KEY
+    { "shutdown", &shutdown_item },
+#endif
 };
 #define MAX_MENU_ITEMS (sizeof(menu_table) / sizeof(struct menu_table))
 static struct menu_item_ex *root_menu__[MAX_MENU_ITEMS];
@@ -946,6 +999,11 @@ void root_menu(void)
 
     push_current_activity(ACTIVITY_MAINMENU);
     next_screen = root_menu_setup_screens();
+#ifdef TAGCACHE_LOWMEM
+    /* auto update in the foreground, before any resumed playback */
+    if (global_settings.tagcache_autoupdate)
+        tagcache_build_now(false);
+#endif
 
     while (true)
     {

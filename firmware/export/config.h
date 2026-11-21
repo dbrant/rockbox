@@ -82,6 +82,7 @@
 #define RK27XX       2700
 #define X1000        1000
 #define STM32H743   32743
+#define SL6801       6801
 #define N10480H     10480
 
 /* platforms
@@ -158,6 +159,7 @@
 #define N3DS_PAD           78
 #define HIBY_R3PROII_PAD   79
 #define HIDIZS_AP80MAX_PAD 80
+#define YP3_PAD           81
 
 /* CONFIG_REMOTE_KEYPAD */
 #define H100_REMOTE   1
@@ -274,6 +276,7 @@
 #define LCD_SHANLING_Q1   70 /* as used by the Shanling Q1 */
 #define LCD_EROSQ         71 /* as used by the ErosQ (native) */
 #define LCD_ECHO_R1       72 /* ILI9342, as used by the Echo R1 */
+#define LCD_YP3           73 /* Experimental low-memory logical display */
 
 /* LCD_PIXELFORMAT */
 #define HORIZONTAL_PACKING 1
@@ -357,6 +360,7 @@ Lyre prototype 1 */
 #define RTC_NANO3G   25 /* Dialog Semiconductor D1671 ??? */
 #define RTC_NANO4G   26 /* Dialog Semiconductor D1759 ??? */
 #define RTC_STM32H743 27
+#define RTC_SL6801   28 /* SL6801 PMU calendar */
 
 /* USB On-the-go */
 #define USBOTG_M66591   6591 /* M:Robe 500 */
@@ -579,6 +583,8 @@ Lyre prototype 1 */
 #include "config/erosqnative.h"
 #elif defined(ECHO_R1)
 #include "config/echor1.h"
+#elif defined(YP3_SL6801)
+#include "config/yp3.h"
 #elif defined(SURFANS_F28)
 #include "config/surfansf28.h"
 #elif defined(RG_NANO)
@@ -693,6 +699,13 @@ Lyre prototype 1 */
 /* define for all cpus from TCC780 family */
 #if (CONFIG_CPU == TCC7801)
 #define CPU_TCC780X
+#endif
+
+/* Dev builds (HAVE_DEVLOG, devlog.h): Home on the main menu selects its
+ * first item instead of going back to the previous screen, so key-driven
+ * tests reach a known menu position with Home twice from anywhere. */
+#ifdef HAVE_DEVLOG
+#define HAVE_HOME_SELECTS_FIRST_ITEM
 #endif
 
 /* define for all cpus from ARM7TDMI family (for specific optimisations) */
@@ -993,7 +1006,7 @@ Lyre prototype 1 */
 #endif
 #endif
 
-#if defined(HAVE_TAGCACHE)
+#if defined(HAVE_TAGCACHE) && !defined(TAGCACHE_LOWMEM)
 #define HAVE_PICTUREFLOW_INTEGRATION
 #endif
 
@@ -1191,6 +1204,12 @@ Lyre prototype 1 */
 
 /* JZ47xx: core only */
 #elif (CONFIG_CPU == JZ4732 || CONFIG_CPU == JZ4760B) && !defined(PLUGIN) && !defined(CODEC)
+# define USE_IRAM
+
+/* SL6801: core only (uncached XIP; codecs and plugins already run from SRAM),
+ * and XIP codecs, whose IRAM sections go to the arena (HAVE_XIP_CODECS) */
+#elif (CONFIG_CPU == SL6801) && \
+      ((!defined(PLUGIN) && !defined(CODEC)) || defined(CODEC_XIP))
 # define USE_IRAM
 #endif
 
@@ -1425,6 +1444,11 @@ Lyre prototype 1 */
 
 #endif /* HAVE_USBSTACK */
 
+/* AVRCP keys from Bluetooth headsets */
+#if defined(HAVE_BLUETOOTH) && !defined(BOOTLOADER) && !defined(HAVE_MULTIMEDIA_KEYS)
+#define HAVE_MULTIMEDIA_KEYS
+#endif
+
 /* This attribute can be used to enable to detection of plugin file handles leaks.
  * When enabled, the plugin core will monitor open/close/creat and when the plugin exits
  * will display an error message if the plugin leaked some file handles */
@@ -1437,7 +1461,7 @@ Lyre prototype 1 */
 #define HAVE_PCM_FULL_DUPLEX
 #endif
 
-#if !defined(BOOTLOADER)
+#if !defined(BOOTLOADER) && !defined(HAVE_NO_PITCHCONTROL)
 #define HAVE_PITCHCONTROL
 #endif
 

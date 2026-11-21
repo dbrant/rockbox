@@ -140,4 +140,16 @@ int font_getstringsize(const unsigned char *str, int *w, int *h, int fontnumber)
 int font_get_width(struct font* ft, ucschar_t ch);
 const unsigned char * font_get_bits(struct font* ft, ucschar_t ch);
 
+#if !defined(__PCTOOL__) && !defined(BOOTLOADER) && defined(HAVE_FONT_TEXT_LOCK)
+/* Text output from more than one thread (the UI and the scroll thread):
+ * with 4 KB glyph caches a glyph read from the card, which sleeps, is
+ * common, and the glyph cache, bidi_l2v()'s buffers and the scroll lines
+ * are shared. The lock (recursive) is held across each of them. */
+void font_text_lock(void);
+void font_text_unlock(void);
+#else
+static inline void font_text_lock(void) {}
+static inline void font_text_unlock(void) {}
+#endif
+
 #endif

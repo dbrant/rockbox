@@ -20,7 +20,12 @@
 #ifndef _APPLIMITS_H_
 #define _APPLIMITS_H_
 
+#include "config.h"
+
+/* A target can set its own (config/<target>.h) */
+#ifndef AVERAGE_FILENAME_LENGTH
 #define AVERAGE_FILENAME_LENGTH 40
+#endif
 #define MAX_DIR_LEVELS 10
 
 #endif

@@ -153,7 +153,9 @@ struct scroll_screen_info
 };
 
 /** main lcd **/
+#ifndef LCD_SCROLLABLE_LINES
 #define LCD_SCROLLABLE_LINES ((LCD_HEIGHT+4)/5 < 32 ? (LCD_HEIGHT+4)/5 : 32)
+#endif
 
 extern struct scroll_screen_info lcd_scroll_info;
 

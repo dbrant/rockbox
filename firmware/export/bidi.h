@@ -25,7 +25,7 @@
 /* True for code points that belong to a right-to-left script (Hebrew, Arabic
  * and the Arabic presentation forms). Shared by the bidi engine and by callers
  * that need to know a string's direction. */
-static inline bool is_rtl_char(ucschar_t c)
+static inline __attribute__((always_inline)) bool is_rtl_char(ucschar_t c)
 {
    return ((c >= 0x0590 && c <= 0x06ff) /* Hebrew + Arabic */ ||
            (c >= 0x0750 && c <= 0x077f) /* Arabic Supp */ ||

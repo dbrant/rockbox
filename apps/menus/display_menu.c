@@ -149,8 +149,10 @@ MENUITEM_SETTING(backlight_timeout_plugged,
                 &global_settings.backlight_timeout_plugged, NULL);
 #endif
 
+#if defined(HAS_BUTTON_HOLD) || !defined(HAVE_NO_SOFTLOCK)
 MENUITEM_SETTING(backlight_on_button_hold,
                 &global_settings.backlight_on_button_hold, NULL);
+#endif
 
 MENUITEM_SETTING(caption_backlight, &global_settings.caption_backlight, NULL);
 #if    defined(HAVE_BACKLIGHT_FADING_INT_SETTING) \
@@ -203,7 +205,9 @@ MAKE_MENU(lcd_settings,ID2P(LANG_LCD_MENU),
 # if CONFIG_CHARGING
             ,&backlight_timeout_plugged
 # endif
+#if defined(HAS_BUTTON_HOLD) || !defined(HAVE_NO_SOFTLOCK)
             ,&backlight_on_button_hold
+#endif
             ,&caption_backlight
 #if    defined(HAVE_BACKLIGHT_FADING_INT_SETTING) \
     || defined(HAVE_BACKLIGHT_FADING_BOOL_SETTING)

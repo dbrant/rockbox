@@ -539,6 +539,13 @@
 #define UI_LCD_POSX                 100
 #define UI_LCD_POSY                 100
 
+#elif defined(YP3_SL6801)
+#define UI_TITLE "YP3 experimental game profile"
+#define UI_WIDTH LCD_WIDTH
+#define UI_HEIGHT LCD_HEIGHT
+#define UI_LCD_POSX 0
+#define UI_LCD_POSY 0
+
 #elif defined(SIMULATOR)
 #error no UI defines
 #endif

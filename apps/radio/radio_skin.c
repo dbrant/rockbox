@@ -50,7 +50,14 @@ char* default_radio_skin(enum screen_type screen)
         "%Sx(Signal strength:) %tr dBuV\n"
 #endif
         "%pb\n"
-#ifdef HAVE_RDS_CAP
+#ifdef HAVE_RDS_EXTENDED
+        /* call letters and name; programme type; RT+ artist and title,
+         * else the RadioText */
+        "\n%s%?tc<%tc  |>%ty\n"
+        "%s%tg\n"
+        "%?ti<%s%tw|%s%tz>\n"
+        "%?ti<%s%ti|>\n"
+#elif defined(HAVE_RDS_CAP)
         "\n%s%ty\n"
         "%s%tz\n"
 #endif

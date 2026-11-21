@@ -786,6 +786,26 @@ exit:
  * Checks if there are any music files in the dir or any of its
  * subdirectories.  May be called recursively.
  */
+#if CONFIG_CPU == SL6801
+/* Folder skip: no dircache here, so every folder searched is read from the
+ * card. Hidden folders and .rockbox (hundreds of plugins and codecs, sorted
+ * first) hold no music: searching them took ~7 s. */
+static bool skip_folder(const struct entry *e)
+{
+    return e->name[0] == '.' || (e->attr & ATTR_HIDDEN);
+}
+/* The search runs on the audio thread (a folder skip, the auto change at a
+ * playlist's end). action_userabort() there took the UI's buttons (a Left
+ * hold's release, Cancel, ended `L L+` folder skips) and redrew the status
+ * bar skin on that thread: its skin_render() swapped the static skin buffer
+ * under a WPS render the UI thread had yielded in, and the WPS spun in the
+ * alternator on the status bar's tree. No abort, as ft_build_playlist(). */
+#define dir_search_aborted() false
+#else
+#define skip_folder(e) false
+#define dir_search_aborted() action_userabort(TIMEOUT_NOBLOCK)
+#endif
+
 static int check_subdir_for_music(char *dir, const char *subdir, bool recurse)
 {
     int result = -1;
@@ -833,13 +853,13 @@ static int check_subdir_for_music(char *dir, const char *subdir, bool recurse)
     {
         for (i=0; i<num_files; i++)
         {
-            if (action_userabort(TIMEOUT_NOBLOCK))
+            if (dir_search_aborted())
             {
                 result = -2;
                 break;
             }
 
-            if (files[i].attr & ATTR_DIRECTORY)
+            if ((files[i].attr & ATTR_DIRECTORY) && !skip_folder(&files[i]))
             {
                 result = check_subdir_for_music(dir, files[i].name, true);
                 if (!result)
@@ -989,14 +1009,14 @@ static int get_next_dir(char *dir, int direction)
         for (i=0; i<num_files; i++)
         {
             /* user abort */
-            if (action_userabort(TIMEOUT_NOBLOCK))
+            if (dir_search_aborted())
             {
                 result = -1;
                 exit = true;
                 break;
             }
 
-            if (files[i].attr & ATTR_DIRECTORY)
+            if ((files[i].attr & ATTR_DIRECTORY) && !skip_folder(&files[i]))
             {
                 if (!start_dir)
                 {

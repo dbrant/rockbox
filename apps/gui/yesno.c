@@ -19,6 +19,7 @@
  ****************************************************************************/
 #include "config.h"
 #include "yesno.h"
+#include "string-extra.h"
 #include "system.h"
 #include "kernel.h"
 #include "misc.h"
@@ -31,6 +32,9 @@
 #include "splash.h"
 #include "backlight.h"
 #include "statusbar-skinned.h"
+#ifdef HAVE_DEVLOG
+#include "dev_shell.h"
+#endif
 
 struct gui_yesno
 {
@@ -234,6 +238,9 @@ enum yesno_res gui_syncyesno_run_w_tmo(int ticks, enum yesno_res tmo_default_res
     {
         tmo_default_res = YESNO_TMO;
     }
+#ifdef HAVE_DEVLOG
+    dev_yesno(main_message->message_lines, main_message->nb_lines);
+#endif
 
     FOR_NB_SCREENS(i)
     {
@@ -393,8 +400,41 @@ static bool yesno_pop_lines(const char *lines[], int line_cnt)
 /* YES/NO dialog, uses text parameter as prompt */
 bool yesno_pop(const char* text)
 {
+#ifdef HAVE_YESNO_WORDWRAP
+    /* Narrow screen: wrap the prompt at spaces instead of scrolling it. */
+    static char buf[200];
+    const char *lines[8];
+    int n = 0, maxw = screens[SCREEN_MAIN].getwidth() - 4;
+    char *p = buf;
+    strlcpy(buf, P2STR((const unsigned char *)text), sizeof(buf));
+    while (*p && n < (int)ARRAYLEN(lines))
+    {
+        char *fit = NULL, *q;
+        lines[n++] = p;
+        for (q = p;; q++)
+        {
+            if (*q != ' ' && *q != '\0')
+                continue;
+            char c = *q;
+            int w;
+            *q = '\0';
+            screens[SCREEN_MAIN].getstringsize(p, &w, NULL);
+            *q = c;
+            if (w > maxw && fit)
+                break;
+            fit = q;
+            if (!c)
+                break;
+        }
+        if (*fit)
+            *fit++ = '\0';
+        p = fit;
+    }
+    return yesno_pop_lines(lines, n);
+#else
     const char *lines[]= {text};
     return yesno_pop_lines(lines, 1);
+#endif
 }
 
 /* YES/NO dialog, asks "Are you sure?", displays

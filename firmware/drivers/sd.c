@@ -40,8 +40,12 @@ void sd_get_info(IF_MD(int drive,) struct storage_info *info)
 
     tCardInfo *card = card_get_info_target(drive);
 
-    info->sector_size=card->blocksize;
-    info->num_sectors=card->numblocks;
+    /* A target may have no card metadata after failed initialization. */
+    info->sector_size = card ? card->blocksize : 512;
+    info->num_sectors = card ? card->numblocks : 0;
+#ifdef MAX_PHYS_SECTOR_SIZE
+    info->phys_sector_mult = 1;
+#endif
     info->vendor="Rockbox";
 #if CONFIG_STORAGE == STORAGE_SD
     info->product = (drive==0) ? "Internal Storage" : "SD Card Slot";

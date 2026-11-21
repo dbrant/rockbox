@@ -1007,6 +1007,11 @@ static FORCE_INLINE void prepare_block(struct thread_entry *current,
  * INTERNAL: Intended for use by kernel and not programs.
  *---------------------------------------------------------------------------
  */
+#ifdef HAVE_THREAD_CPU_ACCOUNTING
+/* Target code: charge the CPU time since its last call to thread SLOT (-1:
+ * the scheduler and its idle loop) */
+void thread_cpu_account(int slot);
+#endif
 void switch_thread(void)
 {
     const unsigned int core = CURRENT_CORE;
@@ -1017,6 +1022,9 @@ void switch_thread(void)
     {
 #ifdef RB_PROFILE
         profile_thread_stopped(THREAD_ID_SLOT(thread->id));
+#endif
+#ifdef HAVE_THREAD_CPU_ACCOUNTING
+        thread_cpu_account(THREAD_ID_SLOT(thread->id));
 #endif
 #ifdef BUFLIB_DEBUG_CHECK_VALID
         /* Check core_ctx buflib integrity */
@@ -1100,6 +1108,9 @@ void switch_thread(void)
 
 #ifdef RB_PROFILE
     profile_thread_started(THREAD_ID_SLOT(thread->id));
+#endif
+#ifdef HAVE_THREAD_CPU_ACCOUNTING
+    thread_cpu_account(-1); /* the scheduler and its idle loop */
 #endif
 
     /* And finally, give control to the next thread. */

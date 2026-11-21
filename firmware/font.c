@@ -35,6 +35,7 @@
 #include "lcd.h"
 #include "string-extra.h"
 #include "font.h"
+#include "devlog.h"
 #include "file.h"
 #include "core_alloc.h"
 #include "debug.h"
@@ -150,11 +151,45 @@ static void lock_font_handle(int handle, bool lock)
 
 void font_lock(int font_id, bool lock)
 {
+#if CONFIG_CPU == SL6801
+    /* FONT_UI (== MAXFONTS) is an alias that font_get() resolves: pin the
+     * real UI font. Unpinned, it moved while a caller held its struct font
+     * across glyph loads from the card, and the stale cache pointers wrote
+     * glyphs into other heap blocks (buflib "block len wacky" panics). */
+    if (font_id == FONT_UI)
+        font_id = ui_font;
+#endif
     if( font_id < 0 || font_id >= MAXFONTS )
         return;
     if( buflib_allocations[font_id] > 0 )
         lock_font_handle(buflib_allocations[font_id], lock);
 }
+
+#if defined(HAVE_FONT_TEXT_LOCK) && !defined(BOOTLOADER)
+static struct mutex text_mtx;
+
+/* panicf() draws with interrupts off; it must not wait for the lock */
+static inline bool text_lock_usable(void)
+{
+#ifdef SIMULATOR
+    return true;
+#else
+    return irq_enabled();
+#endif
+}
+
+void font_text_lock(void)
+{
+    if (text_lock_usable())
+        mutex_lock(&text_mtx);
+}
+
+void font_text_unlock(void)
+{
+    if (text_lock_usable())
+        mutex_unlock(&text_mtx);
+}
+#endif
 
 static struct buflib_callbacks buflibops = {buflibmove_callback, NULL, NULL };
 
@@ -176,6 +211,9 @@ void font_init(void)
     cache_fd = -1;
     while (i<MAXFONTS)
         buflib_allocations[i++] = -1;
+#if defined(HAVE_FONT_TEXT_LOCK) && !defined(BOOTLOADER)
+    mutex_init(&text_mtx);
+#endif
 }
 
 /* Check if we have x bytes left in the file buffer */
@@ -807,6 +845,21 @@ load_cache_entry(struct font_cache_entry* p, void* callback_data)
     int32_t file_offset = FONT_HEADER_SIZE + bitmap_offset;
     lseek(pf->fd, file_offset, SEEK_SET);
     int src_bytes = glyph_bytes(pf, p->width);
+#if CONFIG_CPU == SL6801
+    /* never read a glyph outside this font's own buffer */
+    if ((unsigned char *)p->bitmap < pf->buffer_start ||
+        (unsigned char *)p->bitmap + src_bytes > pf->buffer_end)
+    {
+        dev_log("font glyph slot outside buffer: pf %p buf %p-%p slot %p "
+                    "bytes %d width %d char %lu cap %d base %p path %s",
+                    pf, pf->buffer_start, pf->buffer_end, p->bitmap, src_bytes,
+                    p->width, (unsigned long)char_code, pf->cache._capacity,
+                    pf->cache._lru._base,
+                    ((struct buflib_alloc_data *)core_get_data(pf->handle))->path);
+        lock_font_handle(pf->handle, false);
+        return;
+    }
+#endif
     read(pf->fd, p->bitmap, src_bytes);
 
     lock_font_handle(pf->handle, false);
@@ -843,7 +896,11 @@ int font_get_width(struct font* pf, ucschar_t char_code)
     char_code -= pf->firstchar;
 
     if (pf->fd >= 0 && pf != &sysfont)
+    {
+        font_text_lock();
         width = font_cache_get(&pf->cache,char_code,false,load_cache_entry,pf)->width;
+        font_text_unlock();
+    }
     else if (pf->disabled &&
         (e = font_cache_get(&pf->cache,char_code,true,load_cache_entry,pf)))
         width = e->width; /* falls back to pf->maxwidth if !e */
@@ -866,9 +923,11 @@ const unsigned char* font_get_bits(struct font* pf, ucschar_t char_code)
 
     if (pf->fd >= 0 && pf != &sysfont)
     {
+        font_text_lock();
         bits =
             (unsigned char*)font_cache_get(&pf->cache, char_code,
                                 false, load_cache_entry, pf)->bitmap;
+        font_text_unlock();
     }
     else if (pf->disabled)
     {

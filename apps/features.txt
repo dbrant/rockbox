@@ -20,6 +20,10 @@ alarm
 backlight_brightness
 #endif
 
+#if defined(HAVE_BLUETOOTH)
+bluetooth
+#endif
+
 #if defined(HAVE_GENERAL_PURPOSE_LED)
 general_purpose_led
 #endif
@@ -166,6 +170,9 @@ tc_ramcache
 charging
 #if defined(HAVE_USB_CHARGING_ENABLE)
 usb_charging_enable
+#endif
+#if defined(HAVE_CHARGE_LIMIT)
+charge_limit
 #endif
 #endif
 

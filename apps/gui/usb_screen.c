@@ -41,6 +41,9 @@
 #include "playlist.h"
 #include "misc.h"
 #include "icons.h"
+#ifdef HAVE_BLUETOOTH
+#include "bluetooth_policy.h"
+#endif
 
 #include "bitmaps/usblogo.h"
 
@@ -106,6 +109,12 @@ static void handle_usb_events(struct viewport *title)
             return;
         if (button == SYS_CHARGER_DISCONNECTED)
             reset_runtime();
+#ifdef HAVE_BLUETOOTH
+        /* Routed now: dropped here, the stack would post it again every
+         * 2 s all through USB mode */
+        if (button == SYS_BT_AUDIO_CONNECTED || button == SYS_BT_AUDIO_DISCONNECTED)
+            bluetooth_audio_event(button);
+#endif
 
 /* USB-MMC bridge can report activity */
 #if (CONFIG_STORAGE & STORAGE_MMC) && !defined(SIMULATOR)

@@ -61,6 +61,12 @@
 #include "talk.h"
 #include "plugin.h"
 #include "misc.h"
+#ifdef HAVE_DEVLOG
+#include "dev_shell.h"
+#endif
+#ifdef HAVE_BATTLOG
+#include "battlog.h"
+#endif
 #include "dircache.h"
 #ifdef HAVE_TAGCACHE
 #include "tagcache.h"
@@ -124,6 +130,10 @@
 
 #ifdef HAVE_HARDWARE_CLICK
 #include "piezo.h"
+#endif
+
+#ifdef HAVE_BLUETOOTH
+#include "bluetooth_policy.h"
 #endif
 
 #if (CONFIG_PLATFORM & PLATFORM_NATIVE)
@@ -243,6 +253,12 @@ int main(void)
     validate_start_directory_init();
     /* no calls INIT_ATTR functions after this point anymore!
      * see definition of INIT_ATTR in config.h */
+#ifdef HAVE_DEVLOG
+    dev_boot();
+#endif
+#ifdef HAVE_BATTLOG
+    battlog_start();
+#endif
     CHART(">root_menu");
     root_menu();
 }
@@ -266,6 +282,17 @@ int show_logo_boot( void )
     lcd_bmp(&bm_rockboxlogo, (LCD_WIDTH - BMPWIDTH_rockboxlogo) / 2, 16);
 #else
     lcd_bmp(&bm_rockboxlogo, (LCD_WIDTH - BMPWIDTH_rockboxlogo) / 2, 10);
+#if defined(BOOT_LOGO_NOTE) && defined(HAVE_LCD_COLOR)
+    /* the target's note under the logo, in red (yp3.h: an unofficial
+     * port) */
+    int note_w;
+    unsigned fg = lcd_get_foreground();
+    font_getstringsize(BOOT_LOGO_NOTE, &note_w, NULL, FONT_SYSFIXED);
+    lcd_set_foreground(LCD_RGBPACK(230, 50, 40));
+    lcd_putsxy((LCD_WIDTH - note_w) / 2, 10 + BMPHEIGHT_rockboxlogo + font_h,
+               BOOT_LOGO_NOTE);
+    lcd_set_foreground(fg);
+#endif
     if (ver_w > LCD_WIDTH)
         lcd_putsxy(0, LCD_HEIGHT-font_h, rbversion);
     else
@@ -427,8 +454,10 @@ static void init(void)
 #if (CONFIG_PLATFORM & PLATFORM_ANDROID)
     notification_init();
 #endif
+#ifndef HAVE_BUILTIN_LANGUAGE_ONLY
     lang_init(core_language_builtin, language_strings,
               LANG_LAST_INDEX_IN_ARRAY);
+#endif
 #ifdef DEBUG
     debug_init();
 #endif
@@ -464,6 +493,9 @@ static void init(void)
     audio_init();
     talk_announce_voice_invalid(); /* notify user w/ voice prompt if voice file invalid */
     settings_apply_skins();
+#ifdef HAVE_BLUETOOTH
+    bluetooth_init();
+#endif
 
 /* do USB last so prompt (if enabled) can work correctly if USB was inserted with device off,
  * also doesn't hurt that it will display the nice pretty backdrop this way too. */
@@ -531,8 +563,10 @@ static void init(void)
     CHART(">show_logo");
     show_logo_boot();
     CHART("<show_logo");
+#ifndef HAVE_BUILTIN_LANGUAGE_ONLY
     lang_init(core_language_builtin, language_strings,
               LANG_LAST_INDEX_IN_ARRAY);
+#endif
 
 #ifdef DEBUG
     debug_init();
@@ -711,6 +745,9 @@ static void init(void)
     CHART(">settings_load");
     settings_load();
     CHART("<settings_load");
+#ifdef HAVE_DEVLOG
+    dev_settings_loaded();
+#endif
 
 #if defined(BUTTON_REC) || \
     (CONFIG_KEYPAD == GIGABEAT_PAD) || \
@@ -777,6 +814,9 @@ static void init(void)
     audio_init();
     CHART("<audio_init");
     talk_announce_voice_invalid(); /* notify user w/ voice prompt if voice file invalid */
+#ifdef HAVE_BLUETOOTH
+    bluetooth_init();
+#endif
 
 #ifdef HAVE_WIFI
     wifi_init();

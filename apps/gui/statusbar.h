@@ -42,6 +42,10 @@ struct status_info {
     bool battery_state;
     bool shuffle;
     bool keylock;
+#ifdef HAVE_BLUETOOTH
+    int bt_status;
+    int bt_battery;             /* the headset's, -1 if not reported */
+#endif
 #ifdef HAS_REMOTE_BUTTON_HOLD
     bool keylockremote;
 #endif

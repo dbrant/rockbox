@@ -49,6 +49,11 @@
 #include "language.h"
 #include "statusbar-skinned.h"
 #include "panic.h"
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+#include "codec_thread.h"
+#include "module_arena.h"
+#endif
+#include "devlog.h"
 
 #if CONFIG_CHARGING
 #include "power.h"
@@ -167,6 +172,7 @@ static void plugin_check_open_close__exit(void)
         return;
 
     logf("Plugin '%s' leaks file handles", current_plugin);
+    dev_msg("plugin", "%s leaks file handles", current_plugin);
 
     static const char *lines[] =
         { ID2P(LANG_PLUGIN_ERROR), "#leak-file-handles" };
@@ -190,7 +196,7 @@ static const struct plugin_api rockbox_api = {
     rbversion,
     &global_settings,
     &global_status,
-    language_strings,
+    (unsigned char **)language_strings,
     &core_bitmaps[0],
     /* lcd */
     splashf,
@@ -838,6 +844,9 @@ static const struct plugin_api rockbox_api = {
 #ifdef ROCKBOX_HAS_LOGF
     _logf,
 #endif
+#ifdef HAVE_DEVLOG
+    dev_msg,
+#endif
     codec_thread_do_callback,
     codec_load_file,
     codec_run_proc,
@@ -892,9 +901,15 @@ static const struct plugin_api rockbox_api = {
 
     /* new stuff at the end, sort into place next time
        the API gets incompatible */
+#ifdef HAVE_BLUETOOTH
+    pcm_sink_latency_ms,
+#endif
 };
 
 static int plugin_buffer_handle;
+#ifdef HAVE_DEVLOG
+static int plugin_running;            /* plugin_is_running() */
+#endif
 static size_t plugin_buffer_size;
 
 int plugin_load(const char* plugin, const void* parameter)
@@ -937,6 +952,9 @@ int plugin_load(const char* plugin, const void* parameter)
         {
             lc_close(current_plugin_handle);
             current_plugin_handle = pfn_tsr_exit = NULL;
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+            module_arena_release_plugin();
+#endif
             plugin_buffer_handle = core_free(plugin_buffer_handle);
 
             if (!reenter)
@@ -950,9 +968,37 @@ int plugin_load(const char* plugin, const void* parameter)
     if (!storage_disk_is_active())
         splash(0, ID2P(LANG_WAIT));
 #endif
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+    /* Claim intent before stopping: queued playback cannot reload an overlay
+     * while stop/unload complete. Every loader is guarded in codecs.c. */
+#ifdef HAVE_RECORDING
+    /* not over the recording engine's encoder (see skin_data_load()) */
+    if (audio_recording_ready())
+    {
+        dev_msg("plugin", "%s: not loaded over the recording engine", plugin);
+        return PLUGIN_ERROR;
+    }
+#endif
+    if (!module_arena_request_plugin())
+    {
+        dev_msg("plugin", "%s: module arena request refused", plugin);
+        return PLUGIN_ERROR;
+    }
+    audio_hard_stop();
+    codec_unload();
+    if (!module_arena_acquire_plugin())
+    {
+        dev_msg("plugin", "%s: module arena not acquired", plugin);
+        module_arena_release_plugin();
+        return PLUGIN_ERROR;
+    }
+#endif
     strcpy(current_plugin, plugin);
     current_plugin_handle = lc_open(plugin, pluginbuf, PLUGIN_BUFFER_SIZE);
     if (current_plugin_handle == NULL) {
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+        module_arena_release_plugin();
+#endif
         if (global_settings.talk_menu)
         {
             talk_id(LANG_PLUGIN_CANT_OPEN, false);
@@ -980,10 +1026,18 @@ int plugin_load(const char* plugin, const void* parameter)
     }
 
     if (hdr == NULL || hdr->api_version != PLUGIN_API_VERSION ||
+#ifdef HAVE_EXACT_MODULE_API
+        hdr->build_id != MODULE_BUILD_ID ||
+        p_hdr->api_size != sizeof(struct plugin_api))
+#else
         p_hdr->api_size > sizeof(struct plugin_api))
+#endif
     {
         lc_close(current_plugin_handle);
         current_plugin_handle = NULL;
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+        module_arena_release_plugin();
+#endif
         splash(HZ*2, hdr ? ID2P(LANG_PLUGIN_WRONG_VERSION)
                          : ID2P(LANG_PLUGIN_WRONG_MODEL));
         return -1;
@@ -1032,7 +1086,20 @@ int plugin_load(const char* plugin, const void* parameter)
 
     plugin_check_open_close__enter();
 
+#if defined(HAVE_SELECT_POWER_KEY) && !defined(SIMULATOR)
+    /* games hold Select: no power-off hold while a plugin runs */
+    button_set_power_hold(false);
+#endif
+#ifdef HAVE_DEVLOG
+    plugin_running++;
+#endif
     int rc = p_hdr->entry_point(parameter); /* run the loaded plugin */
+#ifdef HAVE_DEVLOG
+    plugin_running--;
+#endif
+#if defined(HAVE_SELECT_POWER_KEY) && !defined(SIMULATOR)
+    button_set_power_hold(true);
+#endif
 
     /* unlock the tree and restore the dirfilter pointer */
     tree_unlock_cache(tc);
@@ -1050,6 +1117,9 @@ int plugin_load(const char* plugin, const void* parameter)
     {   /* close handle if plugin is no tsr one */
         lc_close(current_plugin_handle);
         current_plugin_handle = NULL;
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+        module_arena_release_plugin();
+#endif
         plugin_buffer_handle = core_free(plugin_buffer_handle);
     }
 
@@ -1104,7 +1174,10 @@ int plugin_load(const char* plugin, const void* parameter)
     status_save(false);
 
     if (rc == PLUGIN_ERROR)
+    {
+        dev_msg("plugin", "%s returned error", plugin);
         splash(HZ*2, str(LANG_PLUGIN_ERROR));
+    }
 
     if (resume_plugin && rc != PLUGIN_GOTO_PLUGIN && !pfn_tsr_exit)
     {
@@ -1152,6 +1225,18 @@ void* plugin_get_buffer(size_t *buffer_size)
     }
     else
     {
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+        /* The plugin buffer is also the codec's arena: core users (tagtree's
+         * random fill, bookmarks, the playlist viewer...) wrote over the
+         * running codec (HardFaults with pc in the codec). */
+        if (module_arena_codec_active())
+        {
+            dev_log("plugin_get_buffer: refused, codec loaded (caller %p)",
+                        __builtin_return_address(0));
+            *buffer_size = 0;
+            return NULL;
+        }
+#endif
         *buffer_size = PLUGIN_BUFFER_SIZE;
         buffer_pos = 0;
     }
@@ -1169,6 +1254,18 @@ static void* plugin_get_audio_buffer(size_t *buffer_size)
     {
         plugin_buffer_handle = core_alloc_maximum(&plugin_buffer_size,
                                                   &buflib_ops_locked);
+#if defined(YP3_SL6801)
+        /* a failed handle's data pointer is garbage (it was the plugin's
+         * own load address) */
+        if (plugin_buffer_handle <= 0)
+        {
+            plugin_buffer_handle = 0;
+            plugin_buffer_size = 0;
+            if (buffer_size)
+                *buffer_size = 0;
+            return NULL;
+        }
+#endif
     }
 
     if (buffer_size)
@@ -1204,3 +1301,23 @@ char *plugin_get_current_filename(void)
 {
     return current_plugin;
 }
+
+#ifdef HAVE_DEVLOG
+/* A plugin's code is running, whatever screen it shows: one in its own
+ * settings (set_option) has another activity (YP3 gate torture 123: Sudoku
+ * in an option list read as no plugin, and the next play's codecs were
+ * refused the arena) */
+bool plugin_is_running(void)
+{
+    return plugin_running > 0;
+}
+
+/* A plugin took the audio buffer (core_alloc_maximum(): the heap is gone)
+ * and stopped playback for its run: the UI's own ways to play are closed
+ * meanwhile (imageviewer's menu), and a play then panicked in
+ * audio_reset_buffer() with no heap for its buffer */
+bool plugin_holds_audio_buffer(void)
+{
+    return plugin_buffer_handle > 0;
+}
+#endif

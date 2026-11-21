@@ -48,7 +48,11 @@ enum tag_type { tag_artist = 0, tag_album, tag_genre, tag_title,
 #define SEEK_LIST_SIZE 32
 
 #define TAGCACHE_MAX_FILTERS 4
+#ifdef TAGCACHE_LOWMEM
+#define TAGCACHE_MAX_CLAUSES 4  /* the default tagnavi.config needs 4 */
+#else
 #define TAGCACHE_MAX_CLAUSES 32
+#endif
 
 /* Tag to be used on untagged files. */
 #define UNTAGGED "<Untagged>"
@@ -212,6 +216,11 @@ void tagcache_start_scan(void);
 void tagcache_stop_scan(void);
 bool tagcache_update(void);
 bool tagcache_rebuild(void);
+#ifdef TAGCACHE_LOWMEM
+void tagcache_build_now(bool rebuild);
+bool tagcache_build_now_busy(void);
+void tagcache_record_runtime_stats(const char *path, long played_ms);
+#endif
 int tagcache_get_max_commit_step(void);
 #endif
 #endif

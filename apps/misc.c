@@ -86,10 +86,16 @@
 #endif
 #if !defined(__PCTOOL__)
 #include "bmp.h"
+#ifdef HAVE_DEVLOG
+#include "dev_shell.h"
+#endif
 #include "icons.h"
 #endif /* !__PCTOOL__ */
 #include "bookmark.h"
 #include "wps.h"
+#ifdef HAVE_BLUETOOTH
+#include "bluetooth_policy.h"
+#endif
 #include "playback.h"
 #include "voice_thread.h"
 
@@ -713,6 +719,10 @@ long default_event_handler_ex(long event, void (*callback)(void *), void *parame
             unpause_action(true);
             return SYS_CAR_ADAPTER_RESUME;
 #endif
+#ifdef HAVE_DEVLOG
+        case SYS_DEV_RUN:   /* 0 for a UI ping: nothing ran */
+            return dev_ui_run() ? SYS_DEV_RUN : 0;
+#endif
 #ifdef HAVE_HOTSWAP_STORAGE_AS_MAIN
         case SYS_FS_CHANGED:
         {
@@ -782,6 +792,19 @@ long default_event_handler_ex(long event, void (*callback)(void *), void *parame
             }
             return 0;
         }
+#endif
+#ifdef HAVE_BLUETOOTH
+        case SYS_BT_AUDIO_CONNECTED:
+        case SYS_BT_AUDIO_DISCONNECTED:
+            bluetooth_audio_event(event);
+            return event;
+        case SYS_BT_VOLUME:
+            /* the event data is the last button data, as above */
+            bluetooth_volume_event(button_get_data());
+            return event;
+        case SYS_BT_PLAY:
+            bluetooth_play_event(button_get_data());
+            return event;
 #endif
 #ifdef HAVE_MULTIMEDIA_KEYS
         /* multimedia keys on keyboards, headsets */

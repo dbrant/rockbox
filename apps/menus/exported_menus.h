@@ -43,6 +43,10 @@ extern const struct menu_item_ex
 #endif
         radio_settings_menu,        /* radio_menu.c     */
         theme_menu;                 /* theme_menu.c     */
+#ifdef HAVE_BLUETOOTH
+extern const struct menu_item_ex
+        bluetooth_menu;             /* bluetooth_menu.c */
+#endif
 
 struct browse_folder_info {
     const char* dir;

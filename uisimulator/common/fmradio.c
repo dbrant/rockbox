@@ -137,6 +137,12 @@ size_t tuner_get_rds_info(int setting, void *dst, size_t dstsize)
         [RADIO_RDS_TEXT]         = RDS_INFO_RT,
         [RADIO_RDS_PROGRAM_INFO] = RDS_INFO_PI,
         [RADIO_RDS_CURRENT_TIME] = RDS_INFO_CT,
+#ifdef HAVE_RDS_EXTENDED
+        [RADIO_RDS_PTY_NAME]     = RDS_INFO_PTY,
+        [RADIO_RDS_CALL_LETTERS] = RDS_INFO_CALL,
+        [RADIO_RDS_ARTIST]       = RDS_INFO_ARTIST,
+        [RADIO_RDS_TITLE]        = RDS_INFO_TITLE,
+#endif
     };
 
     if ((unsigned int)setting >= ARRAYLEN(info_id_tbl))
@@ -162,6 +168,20 @@ size_t tuner_get_rds_info(int setting, void *dst, size_t dstsize)
         }
         dstsize = sizeof (time_t);
         break;
+#ifdef HAVE_RDS_EXTENDED
+    case RDS_INFO_PTY:
+        dstsize = strlcpy(dst, "Top 40", dstsize);
+        break;
+    case RDS_INFO_CALL:
+        dstsize = strlcpy(dst, "KRBX", dstsize);
+        break;
+    case RDS_INFO_ARTIST:
+        dstsize = strlcpy(dst, "The Rockboxers", dstsize);
+        break;
+    case RDS_INFO_TITLE:
+        dstsize = strlcpy(dst, "Open Source Jukebox", dstsize);
+        break;
+#endif
 
     default:
         dstsize = 0;

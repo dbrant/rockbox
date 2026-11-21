@@ -64,6 +64,9 @@
 #endif
 #include "language.h"
 #include "usb.h"
+#ifdef HAVE_BLUETOOTH
+#include "bluetooth.h"
+#endif
 #if CONFIG_TUNER
 #include "radio.h"
 #include "tuner.h"
@@ -719,6 +722,20 @@ const char *get_radio_token(struct wps_token *token, int preset_offset,
         case SKIN_TOKEN_RDS_TEXT:
             tuner_get_rds_info(RADIO_RDS_TEXT, buf, buf_size);
             return buf;
+#ifdef HAVE_RDS_EXTENDED
+        case SKIN_TOKEN_RDS_CALL_LETTERS:
+            tuner_get_rds_info(RADIO_RDS_CALL_LETTERS, buf, buf_size);
+            return buf;
+        case SKIN_TOKEN_RDS_PTY_NAME:
+            tuner_get_rds_info(RADIO_RDS_PTY_NAME, buf, buf_size);
+            return buf;
+        case SKIN_TOKEN_RDS_ARTIST:
+            tuner_get_rds_info(RADIO_RDS_ARTIST, buf, buf_size);
+            return buf;
+        case SKIN_TOKEN_RDS_TITLE:
+            tuner_get_rds_info(RADIO_RDS_TITLE, buf, buf_size);
+            return buf;
+#endif
 #else
             return NULL; /* end of the SKIN_TOKEN_HAVE_RDS case */
 #endif /* HAVE_RDS_CAP */
@@ -1509,6 +1526,36 @@ const char *get_token_value(struct gui_wps *gwps,
             if (usb_inserted())
                 return "u";
             return NULL;
+#ifdef HAVE_BLUETOOTH
+        case SKIN_TOKEN_BLUETOOTH_STATUS:
+            /* %?Bt<off|on|connected|streaming> */
+            numeric_ret = bt_status() + 1;
+            itoa_buf(buf, buf_size, numeric_ret - 1);
+            numeric_buf = buf;
+            goto gtv_ret_numeric_tag_info;
+        case SKIN_TOKEN_BLUETOOTH_BATTERY:
+        {
+            /* The headset's battery: %Bb is the percentage, empty until
+             * it reports one; %?Bb<unknown|...|full> has %?bl's levels */
+            int l = bt_battery();
+
+            if (intval)
+            {
+                if (limit == TOKEN_VALUE_ONLY)
+                    numeric_ret = l;
+                else if (l > -1)
+                    numeric_ret = (MAX(limit, 3) - 2) * l / 100 + 2;
+                else
+                    numeric_ret = 1;
+            }
+            numeric_buf = NULL;
+            if (l > -1) {
+                itoa_buf(buf, buf_size, l);
+                numeric_buf = buf;
+            }
+            goto gtv_ret_numeric_tag_info;
+        }
+#endif
         case SKIN_TOKEN_BATTERY_SLEEPTIME:
         {
             if (get_sleep_timer() == 0)

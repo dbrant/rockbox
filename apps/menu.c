@@ -603,10 +603,24 @@ int do_menu(const struct menu_item_ex *start_menu, int *start_selected,
         else if (action == ACTION_STD_MENU)
         {
             if (menu != &root_menu_)
+            {
                 ret = GO_TO_ROOT;
+                done = true;
+            }
+#ifdef HAVE_HOME_SELECTS_FIRST_ITEM
             else
+            {   /* Home on the main menu: back to its first item, so key
+                 * navigation always starts from a known place */
+                gui_synclist_select_item(&lists, 0);
+                redraw_lists = true;
+            }
+#else
+            else
+            {
                 ret = GO_TO_PREVIOUS;
-            done = true;
+                done = true;
+            }
+#endif
         }
         else if (action == ACTION_STD_CANCEL)
         {
@@ -771,6 +785,21 @@ int do_menu(const struct menu_item_ex *start_menu, int *start_selected,
                 /* remove splash from playlist_resume() */
                     redraw_lists = true;
                     break;
+#ifdef HAVE_DEVLOG
+                case SYS_DEV_RUN:
+                {
+                    /* the dev shell ran a plugin or screen in this menu: a
+                     * menu of its own reused current_subitems, and this
+                     * menu's items mapped to the wrong entries (TS17
+                     * torture 10: FM Radio opened Recording) */
+                    int pos = gui_synclist_get_sel_pos(&lists);
+                    init_menu_lists(menu, &lists, -1, false, vps, buf, sizeof buf);
+                    if (pos < current_subitems_count)
+                        gui_synclist_select_item(&lists, pos);
+                    redraw_lists = true;
+                    break;
+                }
+#endif
             }
         }
 

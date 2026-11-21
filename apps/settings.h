@@ -362,6 +362,12 @@ struct system_status
 
     int resume_modified; /* playlist is modified (=> warn before erase) */
     char browse_last_folder[MAX_PATH];/* only saved if keep_directory = true */
+#ifdef HAVE_BLUETOOTH
+    /* Bluetooth and the built-in output keep their own volume: `volume` is
+     * the one in use and volume_other the other's (bluetooth_policy.c) */
+    int volume_other;
+    int volume_is_bt;  /* `volume` is the Bluetooth one */
+#endif
 };
 
 struct user_settings
@@ -526,6 +532,10 @@ struct user_settings
 #if defined(HAVE_HEADPHONE_DETECTION) || defined(HAVE_LINEOUT_DETECTION)
     int  unplug_mode; /* pause on headphone unplug */
     bool unplug_autoresume; /* disable auto-resume if no phones */
+#endif
+#ifdef HAVE_BLUETOOTH
+    bool bt_enabled;     /* Bluetooth powered (apps/bluetooth_policy.c) */
+    bool bt_autoconnect; /* connect to the last paired device at power-on */
 #endif
 
 #ifdef HAVE_QUICKSCREEN
@@ -693,6 +703,9 @@ struct user_settings
 #endif
 #ifdef HAVE_USB_CHARGING_ENABLE
     int usb_charging;
+#endif
+#ifdef HAVE_CHARGE_LIMIT
+    int charge_limit; /* percent; 100 = charge to full */
 #endif
     /* device settings */
 #ifdef HAVE_LCD_CONTRAST

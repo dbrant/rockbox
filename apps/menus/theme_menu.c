@@ -404,7 +404,7 @@ MAKE_MENU(theme_menu, ID2P(LANG_THEME_MENU),
             &browse_rsbs,
 #endif
             &show_icons,
-#ifdef HAVE_BACKDROP_IMAGE
+#if defined(HAVE_BACKDROP_IMAGE) && !defined(HAVE_NO_BACKDROP_FILES)
             &clear_main_bd,
 #endif
             &bars_menu,

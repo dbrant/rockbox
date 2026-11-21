@@ -385,6 +385,7 @@ static void LCDFN(mono_bmp_part_helper)(const unsigned char *src, int src_x,
 static void LCDFN(putsxyofs)(int x, int y, int ofs, const unsigned char *str)
 {
     ucschar_t *ucs;
+    font_text_lock();
     struct viewport *vp = LCDFN(current_viewport);
     font_lock(vp->font, true);
     struct font* pf = font_get(vp->font);
@@ -523,6 +524,7 @@ static void LCDFN(putsxyofs)(int x, int y, int ofs, const unsigned char *str)
         }
     }
     font_lock(vp->font, false);
+    font_text_unlock();
 }
 #else /* BOOTLOADER */
 /* put a string at a given pixel position, skipping first ofs pixel columns */
@@ -759,14 +761,21 @@ bool LCDFN(putsxy_scroll_func)(int x, int y, const unsigned char *string,
     if (!scroll_func)
         LCDFN(putsxyofs)(x, y, x_offset, string);
     else
+    {
+        font_text_lock();
         retval = LCDFN(puts_scroll_worker)(x, y, string, x_offset, false, scroll_func, data);
+        font_text_unlock();
+    }
 
     return retval;
 }
 
 bool LCDFN(puts_scroll)(int x, int y, const unsigned char *string)
 {
-    return LCDFN(puts_scroll_worker)(x, y, string, 0, true, LCDFN(scroll_fn), NULL);
+    font_text_lock();
+    bool retval = LCDFN(puts_scroll_worker)(x, y, string, 0, true, LCDFN(scroll_fn), NULL);
+    font_text_unlock();
+    return retval;
 }
 
 #if !defined(HAVE_LCD_COLOR) || !defined(MAIN_LCD)

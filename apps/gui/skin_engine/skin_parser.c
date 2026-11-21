@@ -29,6 +29,10 @@
 #include "file.h"
 #include "misc.h"
 #include "plugin.h"
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+#include "codec_thread.h"
+#include "module_arena.h"
+#endif
 #include "viewport.h"
 
 #include "skin_buffer.h"
@@ -80,6 +84,7 @@
 
 #include "backdrop.h"
 #include "statusbar-skinned.h"
+#include "devlog.h"
 
 #define WPS_ERROR_INVALID_PARAM         -1
 
@@ -476,6 +481,10 @@ static int parse_font_load(struct skin_element *element,
         glyphs = get_param(element, 2)->data.number;
     else
         glyphs = global_settings.glyphs_to_cache;
+#ifdef TARGET_SKIN_FONT_GLYPHS
+    if (element->params_count <= 2)
+        glyphs = MIN(glyphs, TARGET_SKIN_FONT_GLYPHS);
+#endif
     if (id < 2)
     {
         DEBUGF("font id must be >= 2 (%d)\n", id);
@@ -2600,11 +2609,79 @@ static int skin_element_callback(struct skin_element* element, void* data)
     return CALLBACK_OK;
 }
 
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+static bool skin_data_load_in(enum skinnable_screens skin,
+                              enum screen_type screen,
+                              struct wps_data *wps_data, const char *buf,
+                              bool isfile, struct skin_stats *stats);
+
+/* The skin is parsed in the module arena (the plugin buffer): hold it like
+ * a plugin does for the whole load, so playback started meanwhile (e.g.
+ * from another thread after a USB cycle) cannot load a codec over the
+ * half-built skin (a garbage bitmap width hung read_bmp_fd). */
+bool skin_data_load(enum skinnable_screens skin, enum screen_type screen,
+                    struct wps_data *wps_data, const char *buf, bool isfile,
+                    struct skin_stats *stats)
+{
+#ifdef HAVE_RECORDING
+    /* The recording engine owns the arena's encoder and ignores
+     * audio_stop(): unloading it under pcm_record left enc_cb pointing
+     * into the reparsed arena (UNDEFINSTR in flush_stream_data on stop).
+     * Its heap is all taken anyway; the skin loads once recording closes. */
+    if (audio_recording_ready())
+        return false;
+#endif
+    if (audio_status() & AUDIO_STATUS_PLAY)
+    {
+        /* Playback holds the arena (codec, PCM ring in its top). A skin
+         * left unloaded by an earlier failure loads lazily in Now Playing
+         * or the status bar: that stopped the track just started. It loads
+         * at the next stop; a theme apply stops playback first. */
+        static bool logged;
+        if (!logged)
+            dev_log("skin %d/%d not loaded: playing", (int)skin, (int)screen);
+        logged = true;
+        return false;
+    }
+    if (module_arena_codec_active())
+    {
+        /* stopped with a codec still loaded: unload it, as a theme apply
+         * does */
+        audio_stop();
+        codec_unload();
+    }
+    /* fails while a plugin holds the arena: the skin then goes after it */
+    bool claimed = module_arena_request_plugin();
+    if (claimed && !module_arena_acquire_plugin())
+    {
+        /* Stopped with the PCM ring still in the arena's top: a playlist
+         * that ended by itself (or a USB stop) keeps the playback block,
+         * and every skin load failed, the built-in defaults too. Free it
+         * as a plugin start does. */
+        audio_hard_stop();
+        if (!module_arena_acquire_plugin())
+        {
+            module_arena_release_plugin();
+            return false;
+        }
+    }
+    bool ok = skin_data_load_in(skin, screen, wps_data, buf, isfile, stats);
+    if (claimed)
+        module_arena_release_plugin();
+    return ok;
+}
+
+static bool skin_data_load_in(enum skinnable_screens skin,
+                              enum screen_type screen,
+                              struct wps_data *wps_data, const char *buf,
+                              bool isfile, struct skin_stats *stats)
+#else
 /* Set up skin data from a format buffer (isfile = false)
                        or from skin file (isfile = true) */
 bool skin_data_load(enum skinnable_screens skin, enum screen_type screen,
                     struct wps_data *wps_data, const char *buf, bool isfile,
                     struct skin_stats *stats)
+#endif
 {
     char *wps_buffer = NULL;
     if (!wps_data || !buf)
@@ -2728,6 +2805,17 @@ bool skin_data_load(enum skinnable_screens skin, enum screen_type screen,
         stats->buflib_handles++;
         stats->tree_size = skin_buffer_usage();
     }
+#ifdef YP3_SL6801
+    else
+    {
+        /* No heap for the tree: its fonts and images are only recorded in
+         * the parse buffer, so free them now (later frees find nothing)
+         * and fail, so the caller loads the default skin. */
+        skin_data_reset(wps_data);
+        skin_buffer = NULL;
+        return false;
+    }
+#endif
 #else
     wps_data->wps_loaded = wps_data->tree >= 0;
 #endif

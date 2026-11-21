@@ -263,7 +263,11 @@ MAKE_MENU(sound_settings, ID2P(LANG_SOUND_SETTINGS), NULL, Icon_Audio,
           ,&power_mode
 #endif
           ,&crossfeed_menu, &equalizer_menu, &dithering_enabled
+#ifdef HAVE_NO_SURROUND
+          ,&pbe_menu, &afr_enabled /* no surround: dsp_surround_enable() */
+#else
           ,&surround_menu, &pbe_menu, &afr_enabled
+#endif
 #ifdef HAVE_PITCHCONTROL
           ,&timestretch_enabled
 #endif

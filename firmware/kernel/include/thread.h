@@ -75,7 +75,11 @@
 #define TARGET_EXTRA_THREADS 0
 #endif
 
+#ifdef HAVE_BLUETOOTH
+#define MAXTHREADS (BASETHREADS+TARGET_EXTRA_THREADS+1) /* + firmware/bluetooth */
+#else
 #define MAXTHREADS (BASETHREADS+TARGET_EXTRA_THREADS)
+#endif
 
 BITARRAY_TYPE_DECLARE(threadbit_t, threadbit, MAXTHREADS)
 BITARRAY_TYPE_DECLARE(priobit_t, priobit, NUM_PRIORITIES)

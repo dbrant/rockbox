@@ -62,6 +62,9 @@ extern unsigned short percent_to_volt_discharge[11];
 #if CONFIG_CHARGING
 extern unsigned short percent_to_volt_charge[11];
 #endif
+#ifdef HAVE_BATTERY_REST_CURVE
+extern unsigned short percent_to_volt_rest[11];
+#endif
 
 #ifndef BOOTLOADER
 #include "misc.h"
@@ -120,7 +123,9 @@ static int battery_capacity = BATTERY_CAPACITY_DEFAULT;
 unsigned short power_history[POWER_HISTORY_LEN] = {0};
 
 #if (CONFIG_CPU == JZ4732) || (CONFIG_CPU == JZ4760B) || \
-    (CONFIG_CPU == X1000) || (CONFIG_PLATFORM & PLATFORM_HOSTED)
+    (CONFIG_CPU == X1000) || (CONFIG_PLATFORM & PLATFORM_HOSTED) || \
+    defined(HAVE_DEVLOG) /* dev_log() lines from power thread code (charger,
+                          * RTC alarm): its line buffer and vsnprintf */
 static long power_stack[DEFAULT_STACK_SIZE/sizeof(long)];
 #else
 static long power_stack[DEFAULT_STACK_SIZE/2/sizeof(long)];
@@ -316,6 +321,10 @@ static void send_battery_level_event(int percent)
     static const int levels[] = { 5, 15, 30, 50, 0 };
     const int *level = levels;
 
+    /* An unavailable reading must not consume a low-battery threshold. */
+    if (percent < 0)
+        return;
+
     while (*level)
     {
         if (percent <= *level && last_sent_battery_level > *level) {
@@ -369,6 +378,13 @@ static int voltage_to_battery_level(int millivolts)
     }
     else
 #endif /* CONFIG_CHARGING >= CHARGING_MONITOR */
+#ifdef HAVE_BATTERY_REST_CURVE
+    if (charger_inserted()) {
+        /* external power, not charging: the battery carries no load */
+        level = voltage_to_percent(millivolts, percent_to_volt_rest);
+    }
+    else
+#endif
     {
         /* DISCHARGING or error state */
         level = voltage_to_percent(millivolts, percent_to_volt_discharge);

@@ -188,7 +188,7 @@ static int recfrequency_func(void)
     return ret;
 } /* recfrequency */
 MENUITEM_FUNCTION(recfrequency, 0, ID2P(LANG_FREQUENCY),
-                  recfrequency_func, NULL, Icon_Menu_setting);
+                  recfrequency_func, recmenu_callback, Icon_Menu_setting);
 
 
 static int recchannels_func(void)
@@ -288,6 +288,12 @@ static int recmenu_callback(int action,
         case ACTION_REQUEST_MENUITEM:
             if (this_item == &recsource && no_source_in_menu)
                 return ACTION_EXIT_MENUITEM;
+#ifdef YP3_SL6801
+            /* one recording rate: nothing to choose */
+            if (this_item == &recfrequency &&
+                !(REC_SAMPR_CAPS & (REC_SAMPR_CAPS - 1)))
+                return ACTION_EXIT_MENUITEM;
+#endif
             break;
     }
     return action;

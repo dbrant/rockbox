@@ -18,6 +18,7 @@
  *
  ****************************************************************************/
 #pragma once
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -62,8 +63,17 @@ enum pcm_sink_ids {
 #ifdef USB_ENABLE_IAP
     PCM_SINK_IAP,
 #endif
+#ifdef HAVE_BLUETOOTH
+    PCM_SINK_BT,
+#endif
     PCM_SINK_NUM
 };
 
 /* defined in each platform pcm source */
 extern struct pcm_sink builtin_pcm_sink;
+
+#ifdef HAVE_PCM_SINK_POWER
+/* Target hook, from pcm_switch_sink() in thread context: power a sink's
+ * hardware up before it becomes the sink, down after it stopped being it */
+void pcm_sink_power(enum pcm_sink_ids sink, bool on);
+#endif

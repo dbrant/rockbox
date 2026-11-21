@@ -161,6 +161,8 @@ struct sound_settings_info
 
 #ifdef HAVE_UDA1380
 #include "uda1380.h"
+#elif defined(HAVE_YP3_CODEC)
+#include "yp3_codec.h"
 #elif defined(HAVE_UDA1341)
 #include "uda1341.h"
 #elif defined(HAVE_WM8740)

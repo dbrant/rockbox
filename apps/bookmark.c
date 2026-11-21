@@ -96,6 +96,13 @@ struct resume_info{
 #define TEMP_BUF_SIZE (MAX(MAX_BOOKMARK_SIZE, MAX_PATH + 1))
 static char global_temp_buffer[TEMP_BUF_SIZE];
 
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+#define BOOKMARK_HEAP_SIZE (4 * 1024)
+#define BOOKMARK_HEAP_MARGIN (4 * 1024) /* as the playlist viewer */
+#define BOOKMARK_HEAP_MIN (sizeof(struct bookmark_list) + \
+                           2 * sizeof(char *) + MAX_BOOKMARK_SIZE)
+#endif
+
 static inline void get_hash(const char *key, uint32_t *hash, int len)
 {
     *hash = crc_32(key, len, *hash); /* this is probably sufficient */
@@ -476,10 +483,10 @@ static char* create_bookmark(char **name,
                              resume_info->resume_seed,
                              resume_info->id3->elapsed,
                              resume_info->repeat_mode,
-                             resume_info->shuffle,
+                             resume_info->shuffle
                              /* ...and their values should go here */
 #if defined(HAVE_PITCHCONTROL)
-                             (long)resume_info->pitch,
+                             , (long)resume_info->pitch,
                              (long)resume_info->speed
 #endif
                     ); /*sprintf*/
@@ -982,7 +989,21 @@ static int select_bookmark(const char* bookmark_file_name,
     int ret = BOOKMARK_FAIL;
     *selected_bookmark = NULL;
 
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+    /* The plugin buffer is the codec's arena while playing: list from a
+     * small heap block (buffer_bookmarks() pages through longer files) */
+    int handle = 0;
+    size_t avail = core_allocatable();
+    size = avail > BOOKMARK_HEAP_MARGIN ?
+        MIN(BOOKMARK_HEAP_SIZE, avail - BOOKMARK_HEAP_MARGIN) : 0;
+    if (size >= BOOKMARK_HEAP_MIN)
+        handle = core_alloc_ex(size, &buflib_ops_locked);
+    if (handle <= 0)
+        return BOOKMARK_FAIL;
+    bookmarks = core_get_data(handle);
+#else
     bookmarks = plugin_get_buffer(&size);
+#endif
     bookmarks->buffer_size = size;
     bookmarks->show_dont_resume = show_dont_resume;
     bookmarks->filename = bookmark_file_name;
@@ -1088,6 +1109,16 @@ static int select_bookmark(const char* bookmark_file_name,
     }
     gui_synclist_scroll_stop(&list);
     talk_shutup();
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+    /* play_bookmark() parses from global_temp_buffer like an autoload */
+    if (*selected_bookmark)
+    {
+        strmemccpy(global_temp_buffer, *selected_bookmark,
+                   sizeof(global_temp_buffer));
+        *selected_bookmark = global_temp_buffer;
+    }
+    core_free(handle);
+#endif
     return ret;
 }
 

@@ -449,6 +449,22 @@ static int usb_storage_get_config_descriptor(unsigned char *dest,int max_packet_
 static int usb_handle = 0;
 #endif
 
+#if defined(USB_STORAGE_ALLOC_HARD) && !defined(USB_STATIC_ALLOC)
+/* Ask as hard as core_alloc_maximum() does: playback gives up its buffer,
+ * which an ordinary request cannot make it do. It stops for the disk anyway. */
+static int alloc_hard(size_t size)
+{
+    size_t got;
+    int handle = core_alloc_maximum(&got, &buflib_ops_locked);
+    if (handle > 0 && got < size)
+        handle = core_free(handle);
+    if (handle <= 0)
+        return -1;
+    core_shrink(handle, core_get_data(handle), size);
+    return handle;
+}
+#endif
+
 static int usb_storage_init_connection(void)
 {
     logf("ums: set config");
@@ -473,6 +489,10 @@ static int usb_storage_init_connection(void)
     // Add 31 to handle worst-case misalignment
     usb_handle = core_alloc_ex(ALLOCATE_BUFFER_SIZE + MAX_CBW_SIZE + 31,
                                &buflib_ops_locked);
+#ifdef USB_STORAGE_ALLOC_HARD
+    if (usb_handle < 0)
+        usb_handle = alloc_hard(ALLOCATE_BUFFER_SIZE + MAX_CBW_SIZE + 31);
+#endif
     if (usb_handle < 0)
         panicf("%s(): OOM", __func__);
 
@@ -831,7 +851,8 @@ static void handle_scsi_ready(struct command_block_wrapper* cbw)
     if(storage_removable(lun) && !storage_present(lun))
         ejected[lun] = true;
 
-    if(ejected[lun])
+    /* A fixed drive can be unavailable without a hotswap/present callback. */
+    if(ejected[lun] || block_count == 0)
         lun_present = false;
 
     unsigned int block_size_mult = 1; /* Number of LOGICAL storage device blocks in each USB block */

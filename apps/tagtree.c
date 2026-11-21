@@ -84,7 +84,11 @@ struct tagentry {
 
 static struct tagentry* tagtree_get_entry(struct tree_context *c, int id);
 
+#ifdef TAGCACHE_LOWMEM
+#define SEARCHSTR_SIZE 128
+#else
 #define SEARCHSTR_SIZE 256
+#endif
 
 enum table {
     TABLE_ROOT = 1,
@@ -123,7 +127,11 @@ enum variables {
 };
 
 /* Capacity 10 000 entries (for example 10k different artists) */
+#ifdef TAGCACHE_LOWMEM
+#define UNIQBUF_SIZE (8*1024)   /* 2048 unique values per list */
+#else
 #define UNIQBUF_SIZE (64*1024)
+#endif
 static uint32_t uniqbuf[UNIQBUF_SIZE / sizeof(uint32_t)];
 
 #define MAX_TAGS 5
@@ -177,16 +185,32 @@ struct display_format {
 static struct display_format *formats[TAGMENU_MAX_FMTS];
 static int format_count;
 
+#ifdef TAGCACHE_LOWMEM
+/* Each "By First Letter" menu adds ~30 entries: keep entries small. */
+#define MENUENTRY_MAX_NAME 32
+#else
 #define MENUENTRY_MAX_NAME 64
+#endif
 struct menu_entry {
+#ifdef TAGCACHE_LOWMEM
+    char *_name;                /* allocated to length */
+#else
     char _name[MENUENTRY_MAX_NAME];
+#endif
     const unsigned char *name;
     int type;
     struct search_instruction {
-        char name[MENUENTRY_MAX_NAME];
+#ifndef TAGCACHE_LOWMEM
+        char name[MENUENTRY_MAX_NAME];  /* unused */
+#endif
         int tagorder[MAX_TAGS];
         int tagorder_count;
+#ifdef TAGCACHE_LOWMEM
+        /* per level, allocated with its first clause (most have none) */
+        struct tagcache_search_clause **clause[MAX_TAGS];
+#else
         struct tagcache_search_clause *clause[MAX_TAGS][TAGCACHE_MAX_CLAUSES];
+#endif
         int format_id[MAX_TAGS];
         int clause_count[MAX_TAGS];
         int result_seek[MAX_TAGS];
@@ -259,9 +283,17 @@ static int move_callback(int handle, void* current, void* new)
                         UPDATE(mentry->si.clause[k][l]->str, diff);
                     UPDATE(mentry->si.clause[k][l], diff);
                 }
+#ifdef TAGCACHE_LOWMEM
+                if (mentry->si.clause[k])
+                    UPDATE(mentry->si.clause[k], diff);
+#endif
             }
             if ((char *) menuroot->items[j]->name == (char *) menuroot->items[j]->_name)
                 UPDATE(menuroot->items[j]->name, diff);
+#ifdef TAGCACHE_LOWMEM
+            if (menuroot->items[j]->_name)
+                UPDATE(menuroot->items[j]->_name, diff);
+#endif
             UPDATE(menuroot->items[j], diff);
         }
         if ((char *) menus[i]->title == (char *) menus[i]->_title)
@@ -306,11 +338,20 @@ static uint32_t tagtree_data_crc(struct tree_context* c)
     return crc;
 }
 
+#ifdef TAGCACHE_LOWMEM
+static bool tagtree_oom;    /* the last load ran out of buffer */
+#endif
+
 static void* tagtree_alloc(size_t size)
 {
     size = ALIGN_UP(size, sizeof(void*));
     if (size > (tagtree_bufsize - tagtree_buf_used))
+    {
+#ifdef TAGCACHE_LOWMEM
+        tagtree_oom = true;
+#endif
         return NULL;
+    }
 
     char* buf = core_get_data(tagtree_handle) + tagtree_buf_used;
 
@@ -770,6 +811,18 @@ static int get_condition(struct search_instruction *inst)
         return -2;
     }
 
+#ifdef TAGCACHE_LOWMEM
+    if (!inst->clause[inst->tagorder_count])
+    {
+        inst->clause[inst->tagorder_count] = tagtree_alloc0(
+            TAGCACHE_MAX_CLAUSES * sizeof(struct tagcache_search_clause *));
+        if (!inst->clause[inst->tagorder_count])
+        {
+            logf("tagtree failed to allocate %s", "clause list");
+            return -3;
+        }
+    }
+#endif
     new_clause = tagtree_alloc0(sizeof(struct tagcache_search_clause));
     if (!new_clause)
     {
@@ -816,11 +869,23 @@ static bool parse_search(struct menu_entry *entry, const char *str)
     strp = str;
 
     /* Parse entry name */
+#ifdef TAGCACHE_LOWMEM
+    char name[MENUENTRY_MAX_NAME];
+    if (get_token_str(name, sizeof name) < 0)
+    {
+        logf("No name found.");
+        return false;
+    }
+    entry->_name = tagtree_strdup(name);
+    if (!entry->_name)
+        return false;
+#else
     if (get_token_str(entry->_name, sizeof entry->_name) < 0)
     {
         logf("No name found.");
         return false;
     }
+#endif
 
     /* Attempt to entry name to lang_id for voicing/translation
     (excepted for single character entries like those in the 'First Letter' menus)
@@ -931,6 +996,7 @@ static int compare_with_albums(const void *p1, const void *p2)
     return qsort_fn(e1->name, e2->name, MAX_PATH);
 }
 
+#ifndef TAGCACHE_LOWMEM
 static void tagtree_buffer_event(unsigned short id, void *ev_data)
 {
     (void)id;
@@ -993,6 +1059,7 @@ static void tagtree_buffer_event(unsigned short id, void *ev_data)
 
     tagcache_search_finish(&tcs);
 }
+#endif /* !TAGCACHE_LOWMEM */
 
 static void tagtree_track_finish_event(unsigned short id, void *ev_data)
 {
@@ -1000,6 +1067,7 @@ static void tagtree_track_finish_event(unsigned short id, void *ev_data)
     struct track_event *te = (struct track_event *)ev_data;
     struct mp3entry *id3 = te->id3;
 
+#ifndef TAGCACHE_LOWMEM
     long tagcache_idx = id3->tagcache_idx;
     if (!tagcache_idx)
     {
@@ -1007,10 +1075,15 @@ static void tagtree_track_finish_event(unsigned short id, void *ev_data)
         return;
     }
     tagcache_idx--;
+#endif
 
     bool auto_skip = te->flags & TEF_AUTO_SKIP;
     bool runtimedb = global_settings.runtimedb;
+#ifdef TAGCACHE_LOWMEM
+    bool autoresume = false;    /* would need a lookup at buffer time */
+#else
     bool autoresume = global_settings.autoresume_enable;
+#endif
 
     /* Don't process unplayed tracks, or tracks interrupted within the
        first 15 seconds but always process autoresume point */
@@ -1039,6 +1112,12 @@ static void tagtree_track_finish_event(unsigned short id, void *ev_data)
         return;
     }
 
+#ifdef TAGCACHE_LOWMEM
+    /* Looked up and written by the tagcache thread. Ignore the last 15s
+       (crossfade etc.) */
+    tagcache_record_runtime_stats(id3->path,
+                                  MIN(id3->length, id3->elapsed + 15 * 1000));
+#else
     long lastplayed = tagcache_increase_serial();
     if (lastplayed < 0)
     {
@@ -1077,6 +1156,7 @@ static void tagtree_track_finish_event(unsigned short id, void *ev_data)
         logf("tagtree_track_finish_event: Save resume for %s: %lX %lX",
              str_or_empty(id3->title), elapsed, offset);
     }
+#endif /* !TAGCACHE_LOWMEM */
 }
 
 int tagtree_export(void)
@@ -1190,6 +1270,11 @@ static int parse_line(int n, char *buf, void *parameters)
     char *p;
 
     (void)parameters;
+#ifdef TAGCACHE_LOWMEM
+    /* parsed on entering the database, possibly while playing: let the
+       codec run between lines */
+    yield();
+#endif
 
     /* Strip possible <CR> at end of line. */
     p = strchr(buf, '\r');
@@ -1250,7 +1335,13 @@ static int parse_line(int n, char *buf, void *parameters)
                     logf("Load menu fail: %s", data);
                 }
                 break;
-            case menu_byfirstletter: /* Fallthrough */
+            case menu_byfirstletter:
+#ifdef TAGCACHE_LOWMEM
+                /* ~28 entries per menu: too much RAM to browse while
+                   playing. Links to it show nothing and are hidden. */
+                return 0;
+#endif
+                /* Fallthrough */
             case var_menu_start:
                 if (menu_count >= TAGMENU_MAX_MENUS)
                 {
@@ -1385,8 +1476,10 @@ static void tagtree_unload(struct tree_context *c)
     /* may be spurious... */
     core_pin(tagtree_handle);
 
+#ifndef TAGCACHE_LOWMEM  /* registered for good by tagtree_init() */
     remove_event(PLAYBACK_EVENT_TRACK_BUFFER, tagtree_buffer_event);
     remove_event(PLAYBACK_EVENT_TRACK_FINISH, tagtree_track_finish_event);
+#endif
 
     if (c)
     {
@@ -1433,9 +1526,22 @@ static bool initialize_tagtree(void) /* also used when user selects 'Reload' in 
     menu_count = 0;
     menu = NULL;
     rootmenu = -1;
+#ifdef TAGCACHE_LOWMEM
+    /* Only what is free: core_alloc_maximum() would make playback give up
+       its buffer (stopping the music) to browse the database. */
+    tagtree_oom = false;
+    tagtree_bufsize = core_allocatable();
+    tagtree_handle = core_alloc_ex(tagtree_bufsize, &ops);
+    if (tagtree_handle <= 0)
+    {
+        tagtree_oom = true;
+        return false;
+    }
+#else
     tagtree_handle = core_alloc_maximum(&tagtree_bufsize, &ops);
     if (tagtree_handle < 0)
         panicf("tagtree OOM");
+#endif
 
     /* Use the user tagnavi config if present, otherwise use the default. */
     const char* tagnavi_file;
@@ -1460,8 +1566,10 @@ static bool initialize_tagtree(void) /* also used when user selects 'Reload' in 
     if (rootmenu < 0)
         rootmenu = 0;
 
+#ifndef TAGCACHE_LOWMEM
     add_event(PLAYBACK_EVENT_TRACK_BUFFER, tagtree_buffer_event);
     add_event(PLAYBACK_EVENT_TRACK_FINISH, tagtree_track_finish_event);
+#endif
 
     core_shrink(tagtree_handle, NULL, tagtree_buf_used);
     return true;
@@ -1471,11 +1579,48 @@ static bool tagnavi_loaded;
 
 void tagtree_init(void)
 {
+#ifndef TAGCACHE_LOWMEM
     tagnavi_loaded = initialize_tagtree();
+#else
+    /* Runtime statistics, deferred to the tagcache thread; tagnavi.config
+     * is loaded only while browsing. No stats are read into the id3 at
+     * buffer time (that lookup would run on the audio thread). */
+    add_event(PLAYBACK_EVENT_TRACK_FINISH, tagtree_track_finish_event);
+#endif
 }
+
+#ifdef TAGCACHE_LOWMEM
+/* The parsed tagnavi.config (~30 KB) is only held while the database is
+ * browsed: loaded by tagtree_ready(), freed by tagtree_release(). */
+void tagtree_release(struct tree_context *c)
+{
+    if (!tagnavi_loaded)
+        return;
+    tagtree_unload(NULL);
+    tagnavi_loaded = false;
+    /* The next visit starts at the root: a deeper table (left by Home)
+     * would search with csi pointing into the freed menus. */
+    c->currtable = 0;
+    c->currextra = 0;
+    csi = NULL;
+    loaded_entries_crc = 0;
+}
+#endif
+
+#ifdef TAGCACHE_LOWMEM
+/* Why tagtree_ready() failed: out of memory rather than a missing file. */
+bool tagtree_out_of_memory(void)
+{
+    return tagtree_oom;
+}
+#endif
 
 bool tagtree_ready(void)
 {
+#ifdef TAGCACHE_LOWMEM
+    if (!tagnavi_loaded)
+        tagnavi_loaded = initialize_tagtree();
+#endif
     return tagnavi_loaded;
 }
 
@@ -1984,6 +2129,24 @@ entry_skip_formatter:
 
 }
 
+
+/* A menu is empty if it has no items, or only links to empty menus. */
+static bool menu_is_empty(int m, int depth)
+{
+    if (m < 0 || m >= menu_count || !menus[m])
+        return true;
+    if (depth > 8)
+        return false;   /* link loop: treat as not empty */
+    struct menu_root *r = menus[m];
+    for (int i = 0; i < r->itemcount; i++)
+    {
+        if (r->items[i]->type != menu_load ||
+            !menu_is_empty(r->items[i]->link, depth + 1))
+            return false;
+    }
+    return true;
+}
+
 static int load_root(struct tree_context *c)
 {
     struct tagentry *dptr = core_get_data(c->cache.entries_handle);
@@ -2001,8 +2164,14 @@ static int load_root(struct tree_context *c)
     if (menu->itemcount > c->cache.max_entries)
             panicf("%s tree_cache too small", __func__);
 
+    int shown = 0;
     for (i = 0; i < menu->itemcount; i++)
     {
+        /* Links to menus with nothing in them (e.g. a missing custom
+           config) lead nowhere: leave them out. */
+        if (menu->items[i]->type == menu_load &&
+            menu_is_empty(menu->items[i]->link, 0))
+            continue;
 
         dptr->name = (char*)menu->items[i]->name;
 
@@ -2037,12 +2206,13 @@ static int load_root(struct tree_context *c)
         }
 
         dptr++;
+        shown++;
     }
 
     current_offset = 0;
-    current_entry_count = i;
+    current_entry_count = shown;
 
-    return i;
+    return shown;
 }
 
 int tagtree_load(struct tree_context* c)

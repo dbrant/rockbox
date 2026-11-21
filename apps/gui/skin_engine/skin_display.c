@@ -765,6 +765,12 @@ int skin_wait_for_action(enum skinnable_screens skin, int context, int timeout)
         peak_meter_enabled |= skin_get_gwps(skin, i)->data->peak_meter_enabled;
     if (!peak_meter_enabled)
         return get_action(context, timeout);
+#if defined(YP3_SL6801) && (defined(HAVE_LCD_ENABLE) || defined(HAVE_LCD_SLEEP))
+    /* the panel is off: don't wake every tick to draw peak-driven parts
+     * of the skin (whole viewports in themes that colour by %pL) */
+    if (!lcd_active())
+        return get_action(context, timeout);
+#endif
 
     long next_refresh = current_tick;
     long timeout_tick = current_tick + timeout;

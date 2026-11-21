@@ -35,6 +35,9 @@
 #endif
 #include "gui/list.h"
 #include "skin_engine.h"
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+#include "codec_thread.h"
+#endif
 #include "skin_buffer.h"
 #include "statusbar-skinned.h"
 #include "wps_internals.h"
@@ -168,6 +171,15 @@ void settings_apply_skins(void)
 
     if (audio_status() & AUDIO_STATUS_PLAY)
         audio_stop();
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+    /* Free the codec arena: it is also the plugin buffer the skins are
+     * parsed in (a plugin start does the same); not the recording
+     * engine's encoder (see skin_data_load()) */
+#ifdef HAVE_RECORDING
+    if (!audio_recording_ready())
+#endif
+        codec_unload();
+#endif
 
     bool first_run = skin_backdrop_init();
 
@@ -300,11 +312,25 @@ struct gui_wps *skin_get_gwps(enum skinnable_screens skin, enum screen_type scre
 
     if (skins[skin][screen].data.wps_loaded == false)
     {
+#ifdef YP3_SL6801
+        /* A status bar that fails to load (low memory: the default too)
+         * redraws on the way out (sb_process -> viewportmanager_theme_undo
+         * -> sb_skin_update), which asks for it here again: each retry
+         * nested in the last until the UI stack ran off into the thread
+         * table. A load already in progress is left to finish. */
+        static bool loading[SKINNABLE_SCREENS_COUNT][NB_SCREENS];
+        if (loading[skin][screen])
+            return &skins[skin][screen].gui_wps;
+        loading[skin][screen] = true;
+#endif
         char buf[MAX_PATH];
         const char *filename = get_skin_filename(skin, screen, buf, sizeof buf);
         cpu_boost(true);
         skin_load(skin, screen, filename);
         cpu_boost(false);
+#ifdef YP3_SL6801
+        loading[skin][screen] = false;
+#endif
     }
     return &skins[skin][screen].gui_wps;
 }

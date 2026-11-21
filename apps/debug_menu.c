@@ -76,6 +76,9 @@
 #include "tuner.h"
 #include "radio.h"
 #endif
+#ifdef HAVE_BLUETOOTH
+#include "bluetooth.h"
+#endif
 
 #include "scrollbar.h"
 #include "peakmeter.h"
@@ -2306,6 +2309,34 @@ static bool dbg_fm_radio(void)
 #endif /* CONFIG_TUNER */
 #endif /* !SIMULATOR */
 
+#ifdef HAVE_BLUETOOTH
+static void bluetooth_lines(void)
+{
+    simplelist_reset_lines();
+    bt_dbg_info(simplelist_addline);
+}
+
+static int bluetooth_callback(int action, struct gui_synclist *lists)
+{
+    (void)lists;
+    if (action != ACTION_NONE && action != ACTION_REDRAW)
+        return action;
+    bluetooth_lines();
+    return ACTION_REDRAW;
+}
+
+static bool dbg_bluetooth(void)
+{
+    struct simplelist_info info;
+    simplelist_info_init(&info, "Bluetooth", 0, NULL);
+    info.scroll_all = true;
+    info.timeout = HZ / 2;
+    info.action_callback = bluetooth_callback;
+    bluetooth_lines();
+    return simplelist_show_list(&info);
+}
+#endif /* HAVE_BLUETOOTH */
+
 #if !defined(APPLICATION)
 extern bool do_screendump_instead_of_usb;
 
@@ -2997,6 +3028,9 @@ static const struct {
 #if CONFIG_TUNER
         { "FM Radio", dbg_fm_radio },
 #endif
+#endif
+#ifdef HAVE_BLUETOOTH
+        { "Bluetooth", dbg_bluetooth },
 #endif
 #if defined(HAVE_EEPROM) && !defined(HAVE_EEPROM_SETTINGS)
         { "Write back EEPROM", dbg_write_eeprom },

@@ -1396,6 +1396,12 @@ void tree_restore(void)
 #endif
 
 #ifdef HAVE_TAGCACHE
+#ifdef TAGCACHE_LOWMEM
+    /* files may have changed over USB: auto update in the foreground */
+    if (global_settings.tagcache_autoupdate)
+        tagcache_build_now(false);
+#else
     tagcache_start_scan();
+#endif
 #endif
 }

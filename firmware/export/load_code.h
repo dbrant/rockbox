@@ -32,7 +32,25 @@ struct lc_header {
     unsigned short api_version;
     unsigned char *load_addr;
     unsigned char *end_addr;
+#ifdef HAVE_EXACT_MODULE_API
+    unsigned long build_id; /* MODULE_BUILD_ID */
+#endif
 };
+
+#ifdef HAVE_EXACT_MODULE_API
+/* Hash of the module API headers, set by the core and module linker
+ * scripts (module_build_id.lds, see apps/apps.make); hosted builds (the
+ * simulator) link without them */
+#if (CONFIG_PLATFORM & PLATFORM_NATIVE)
+extern char module_build_id[];
+#define MODULE_BUILD_ID ((unsigned long)module_build_id)
+#else
+#define MODULE_BUILD_ID 0ul
+#endif
+#define LC_HEADER_BUILD_ID , MODULE_BUILD_ID
+#else
+#define LC_HEADER_BUILD_ID
+#endif
 
 #if CONFIG_BINFMT == BINFMT_ROCK
 # include "lc-rock.h"

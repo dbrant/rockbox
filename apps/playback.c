@@ -43,6 +43,11 @@
 #include "pcmbuf.h"
 #include "audio_thread.h"
 #include "playback.h"
+#include "devlog.h"
+#ifdef HAVE_DEVLOG
+#include "pcm_mixer.h"  /* audio_dev_state() */
+#include "dev_shell.h"  /* dev_log_heap() */
+#endif
 #include "storage.h"
 #include "misc.h"
 #include "settings.h"
@@ -74,6 +79,13 @@
 #include "usb.h"
 #include "splash.h"
 #include "lang.h"
+#endif
+#ifdef TARGET_AUDIO_BUFFER_CAP
+#include "splash.h"
+#include "lang.h"
+#endif
+#ifdef TARGET_ARENA_PCM_SIZE
+#include "module_arena.h"
 #endif
 
 /* TODO: The audio thread really is doing multitasking of acting like a
@@ -357,6 +369,12 @@ static struct
    there looking stupid and comatose until the user does something */
 static bool codec_skip_pending = false;
 static int  codec_skip_status;
+#ifdef YP3_SL6801
+/* Codec starts that failed in a row. A failure is an auto skip, and under
+ * repeat one that comes back to the same track (under repeat all, around
+ * a playlist where nothing plays): the load was retried in a tight loop */
+static int codec_start_failures;
+#endif
 static bool codec_seeking = false;          /* Codec seeking ack expected? */
 static unsigned int position_key = 0;
 
@@ -812,7 +830,19 @@ static void track_list_clear(unsigned int action)
     {
         struct track_buf_info *tbip = track_buf_info_get(hid);
         if (!tbip)
+        {
+#ifdef YP3_SL6801
+            /* The links to the rest went with it. A list kept here hangs
+             * every later play (the load finish finds no last track):
+             * forget it, and remake the buffer at the next fill, which
+             * closes the handles still open */
+            dev_log("track list: handle %d gone from buffering (%u tracks)",
+                    hid, track_list.count);
+            memset(&track_list, 0, sizeof track_list);
+            buffer_state = AUDIOBUF_STATE_TRASHED;
+#endif
             break;
+        }
 
         int next_hid = tbip->link[1];
 
@@ -837,8 +867,10 @@ static size_t scratch_mem_size(void)
 {
     size_t size = sizeof (struct audio_scratch_memory);
 
+#ifndef HAVE_MINIMAL_AUDIO_PROFILE      /* cuesheets compiled out */
     if (global_settings.cuesheet)
         size += sizeof (struct cuesheet);
+#endif
 
     return size;
 }
@@ -853,32 +885,179 @@ static void scratch_mem_init(void *mem)
     ci.id3 = id3_get(CODEC_ID3);
     audio_scratch_memory->curr_cue = NULL;
 
+#ifndef HAVE_MINIMAL_AUDIO_PROFILE      /* must match scratch_mem_size() */
     if (global_settings.cuesheet)
     {
         audio_scratch_memory->curr_cue =
             SKIPBYTES((struct cuesheet *)audio_scratch_memory,
                       sizeof (struct audio_scratch_memory));
     }
+#endif
 }
 
 static int audiobuf_handle;
+#ifdef TARGET_AUDIO_BUFFER_CAP
+static size_t audiobuf_alloc_size;  /* the handle's size now */
+#endif
+#ifdef TARGET_AUDIO_BUFFER_RESERVE
+#define AUDIO_BUFFER_RESERVE TARGET_AUDIO_BUFFER_RESERVE
+#else
 #define AUDIO_BUFFER_RESERVE (256*1024)
+#endif
 static size_t filebuflen;
+
+#if defined(TARGET_ARENA_PCM_SIZE) && !defined(HAVE_CODEC_EXTRA_BUFFER)
+#error "the playback carvings lend memory to big codecs: HAVE_CODEC_EXTRA_BUFFER"
+#endif
+#ifdef TARGET_ARENA_PCM_SIZE
+/* Playback memory comes in two carvings, chosen by the codec of the track
+ * that plays:
+ * - ring in the arena: the codec leaves room for the PCM ring at the
+ *   arena's top; the playback block holds the full guard and file data.
+ * - ring in the heap: the codec needs the whole arena (AAC, Vorbis, Opus,
+ *   WMA);
+ *   the playback block holds the small ring, the codec's lent block if it
+ *   takes one, a small guard and the file data.
+ * A track that wants the other carving remakes the buffer when it becomes
+ * current (a short gap). A cold start asks for the arena ring again. */
+struct pb_carving {
+    bool arena_ring;                /* the PCM ring in the arena's top */
+    bool lend;                      /* TARGET_CODEC_EXTRA_SIZE for the codec */
+};
+static const struct pb_carving pb_cold = { true, false };
+static struct pb_carving pb_want = { true, false }; /* for the next remake */
+static struct pb_carving pb_made;   /* what the last remake was asked for */
+static bool arena_ring_on;          /* the ring is in the arena now */
+static size_t arena_ring_bytes;     /* reserved at the arena's top */
+static void *arena_ring_end;
+/* Heap-ring codecs copy what they read or ask for <= 2 KB at a time (AAC):
+ * a smaller guard */
+#define HEAP_RING_GUARD_BUFSIZE (8 * 1024)
+/* File data in the playback block. With a lent block it is what is left of
+ * ~92 KB; below the minimum a start fails ("not enough memory") */
+#define FULL_FILE_DATA (TARGET_AUDIO_BUFFER_CAP - TARGET_GUARD_BUFSIZE)
+#define LEND_FILE_DATA (16 * 1024)
+#define MIN_FILE_DATA  (8 * 1024)
+/* buffering.c, for playback only: not in buffering.h, which plugin.h
+ * includes (the module build ID hashes it) */
+void buffering_set_guard(size_t size);
+static void *codec_extra;           /* in the playback block, or NULL */
+
+/* Put the ring in the arena's top (a big codec still loaded or a plugin
+ * keeps it in the heap), or give the top back: the next pcmbuf_init()
+ * sizes and places it accordingly */
+static void arena_ring_place(bool want)
+{
+    if (want && !arena_ring_on && module_arena_acquire_ring())
+    {
+        pcmbuf_set_arena_ring(true);
+        size_t size = ALIGN_UP(pcmbuf_allocation_size_reqd(), 16);
+        void *top = codec_arena_reserve_top(size);
+        if (top)
+        {
+            arena_ring_bytes = size;
+            arena_ring_end = top + size;
+            arena_ring_on = true;
+        }
+        else
+            module_arena_release_ring();    /* a big codec is loaded */
+    }
+    else if (!want && arena_ring_on)
+    {
+        codec_arena_reserve_top(0);
+        module_arena_release_ring();
+        arena_ring_on = false;
+    }
+    pcmbuf_set_arena_ring(arena_ring_on);
+#ifdef HAVE_DEVLOG
+    static int logged = -1;
+    if (logged != arena_ring_on)
+        dev_log("pcm ring in the %s (%lu B reserved)",
+                    arena_ring_on ? "arena" : "heap",
+                    (unsigned long)(arena_ring_on ? arena_ring_bytes : 0));
+    logged = arena_ring_on;
+#endif
+}
+
+/* Whether the codec for AFMT runs beside the ring: it must not need heap
+ * from the arena and its image + bss must end below the ring */
+static bool arena_ring_fits_codec(int afmt)
+{
+    int base = get_audio_base_codec_type(afmt);
+    if (arena_ring_on && base == get_audio_base_codec_type(codec_loaded()))
+        return true;                        /* loaded beside it already */
+    switch (base)
+    {
+    case AFMT_OGG_VORBIS:
+    case AFMT_OPUS:
+    case AFMT_SPEEX:                        /* 20 KB of Ogg buffers */
+    case AFMT_MP4_AAC:
+    case AFMT_MP4_AAC_HE:
+    case AFMT_AAC_BSF:
+    case AFMT_RM_AAC:
+    case AFMT_WMA:
+        return false;                       /* heap from the arena */
+    }
+    size_t need = codec_arena_need(afmt);
+    return need && need <= CODEC_SIZE - arena_ring_bytes;
+}
+static bool codec_wants_extra(int afmt)
+{
+    int base = get_audio_base_codec_type(afmt);
+    return base == AFMT_OGG_VORBIS || base == AFMT_OPUS || base == AFMT_WMA
+           || afmt == AFMT_MP4_AAC_HE;      /* SBR state (libfaad) */
+}
+
+void *audio_codec_extra_buffer(size_t *size)
+{
+    *size = codec_extra ? TARGET_CODEC_EXTRA_SIZE : 0;
+    return codec_extra;
+}
+
+/* The carving the codec for AFMT wants */
+static struct pb_carving pb_carving_for(int afmt)
+{
+    struct pb_carving c = { arena_ring_fits_codec(afmt), false };
+    c.lend = !c.arena_ring && codec_wants_extra(afmt);
+    return c;
+}
+
+/* Like audio_auto_change_frequency(): true if the track's codec wants the
+ * other carving; with PLAY (the track starts now) also post the remake.
+ * Compared with what was asked, not what was placed: an arena that refused
+ * the ring is not asked again for each track. */
+static bool audio_arena_ring_change(struct mp3entry *id3, bool play)
+{
+    if (!valid_mp3entry(id3))
+        return false;
+    struct pb_carving c = pb_carving_for(id3->codectype);
+    if (c.arena_ring == pb_want.arena_ring && c.lend == pb_want.lend)
+        return false;
+    if (!play)
+        return true;
+    dev_log("playback block: ring in the %s%s for codec %d",
+                c.arena_ring ? "arena" : "heap", c.lend ? ", lend" : "",
+                id3->codectype);
+    pb_want = c;
+    audio_queue_post(Q_AUDIO_REMAKE_AUDIO_BUFFER, 0);
+    return true;
+}
+#endif
 
 
 size_t audio_buffer_size(void)
 {
-    if (audiobuf_handle > 0)
+    if (audiobuf_handle > 0 && filebuflen > AUDIO_BUFFER_RESERVE)
         return filebuflen - AUDIO_BUFFER_RESERVE;
     return 0;
 }
 
 size_t audio_buffer_available(void)
 {
-    size_t size = 0;
+    size_t size = audio_buffer_size();
     size_t core_size = core_available();
-    if (audiobuf_handle > 0) /* if allocated return what we can give */
-        size = filebuflen - AUDIO_BUFFER_RESERVE - 128;
+    /* A capped or previously shrunk input buffer may be below the reserve. */
+    size = size > 128 ? size - 128 : 0;
     return MAX(core_size, size);
 }
 
@@ -912,6 +1091,14 @@ static void audio_reset_buffer_noalloc(
        changed, do check the adjustments after the buffer_alloc call
        as it will likely be affected and need sliding over */
     size_t allocsize;
+#ifdef TARGET_ARENA_PCM_SIZE
+    if (arena_ring_on)
+    {
+        pcmbuf_init(arena_ring_end);
+        allocsize = 0;
+    }
+    else
+#endif
     /* Subtract whatever the pcm buffer says it used plus the guard
        buffer */
     allocsize = pcmbuf_init(filebuf + filebuflen);
@@ -923,6 +1110,20 @@ static void audio_reset_buffer_noalloc(
         goto bufpanic;
 
     filebuflen -= allocsize;
+
+#ifdef TARGET_ARENA_PCM_SIZE
+    codec_extra = NULL;
+    /* The lent block only if the file buffer keeps its guard and some data:
+     * a codec without it fails cleanly, a buffer below the guard did not */
+    if (pb_want.lend && !arena_ring_on &&
+        filebuflen >= TARGET_CODEC_EXTRA_SIZE + scratch_mem_size() +
+                      HEAP_RING_GUARD_BUFSIZE + MIN_FILE_DATA)
+    {
+        codec_extra = filebuf;
+        filebuf += TARGET_CODEC_EXTRA_SIZE;
+        filebuflen -= TARGET_CODEC_EXTRA_SIZE;
+    }
+#endif
 
     /* Scratch memory */
     allocsize = scratch_mem_size();
@@ -937,9 +1138,23 @@ static void audio_reset_buffer_noalloc(
     clear_last_folder_album_art();
 #endif
 
+#ifdef TARGET_ARENA_PCM_SIZE
+    buffering_set_guard(arena_ring_on ? TARGET_GUARD_BUFSIZE : HEAP_RING_GUARD_BUFSIZE);
+#endif
     buffering_reset(filebuf, filebuflen);
 
     buffer_state = AUDIOBUF_STATE_INITIALIZED;
+#if defined(HAVE_DEVLOG) && defined(TARGET_ARENA_PCM_SIZE)
+    dev_log("audio buffer: ring %s %lu, lend %d, file %lu",
+                arena_ring_on ? "arena" : "heap",
+                (unsigned long)pcmbuf_get_bufsize(),
+#ifdef TARGET_ARENA_PCM_SIZE
+                codec_extra != NULL,
+#else
+                0,
+#endif
+                (unsigned long)filebuflen);
+#endif
 
 #if defined(ROCKBOX_HAS_LOGF) && defined(LOGF_ENABLE)
     /* Make sure everything adds up - yes, some info is a bit redundant but
@@ -972,13 +1187,19 @@ static int shrink_callback(int handle, unsigned hints, void* start, size_t old_s
     static struct audio_resume_info resume;
 
     bool give_up = false;
-
     /* filebuflen is, at this point, the buffering.c buffer size,
      * i.e. the audiobuf except voice, scratch mem, pcm, ... */
     ssize_t extradata_size = old_size - filebuflen;
     /* check what buflib requests */
     size_t wanted_size = (hints & BUFLIB_SHRINK_SIZE_MASK);
     ssize_t size = (ssize_t)old_size - wanted_size;
+#ifdef HAVE_DEVLOG
+    dev_log("audio buffer shrink %lu by %lu (pos %x)%s: status %d tracks %u",
+            (unsigned long)old_size, (unsigned long)wanted_size,
+            hints & BUFLIB_SHRINK_POS_MASK,
+            thread_self() == audio_thread_id ? " on the audio thread" : "",
+            (int)play_status, track_list.count);
+#endif
 
     if ((size - extradata_size) < AUDIO_BUFFER_RESERVE)
     {
@@ -1041,11 +1262,20 @@ static int shrink_callback(int handle, unsigned hints, void* start, size_t old_s
     {
         buffer_state = AUDIOBUF_STATE_TRASHED;
         audiobuf_handle = core_free(audiobuf_handle);
+#ifdef TARGET_ARENA_PCM_SIZE
+        arena_ring_place(false);
+        codec_extra = NULL;
+#endif
         return BUFLIB_CB_OK;
     }
     /* set final buffer size before calling audio_reset_buffer_noalloc()
      * (now it's the total size, the call will subtract voice etc) */
     filebuflen = size;
+#ifdef TARGET_AUDIO_BUFFER_CAP
+    audiobuf_alloc_size = size;
+    dev_log("audio buffer shrunk %lu -> %lu", (unsigned long)old_size,
+                (unsigned long)size);
+#endif
     switch (hints & BUFLIB_SHRINK_POS_MASK)
     {
         case BUFLIB_SHRINK_POS_BACK:
@@ -1071,16 +1301,143 @@ static struct buflib_callbacks ops = {
     .shrink_callback = shrink_callback,
 };
 
+#ifdef TARGET_AUDIO_BUFFER_CAP
+/* Playback block for carving C: its rings, lent block, guard, scratch and
+ * FILEDATA bytes of file data (MIN_FILE_DATA: the smallest that plays) */
+static size_t pb_block_size(struct pb_carving c, bool minimal)
+{
+    size_t size = scratch_mem_size();
+    if (c.arena_ring)
+        size += TARGET_GUARD_BUFSIZE + (minimal ? MIN_FILE_DATA : FULL_FILE_DATA);
+    else
+    {
+        size += pcmbuf_heap_allocation_size() + HEAP_RING_GUARD_BUFSIZE;
+        if (c.lend)
+            size += TARGET_CODEC_EXTRA_SIZE;
+        size += minimal ? MIN_FILE_DATA : c.lend ? LEND_FILE_DATA : FULL_FILE_DATA;
+    }
+    return ALIGN_UP(size, 16);
+}
+
+/* Largest block less headroom for USB, menus and the like */
+static size_t audio_buffer_fallback_size(void)
+{
+    size_t avail = core_allocatable();
+    return (avail > 8 * 1024 ? avail - 8 * 1024 : 0) & ~(size_t)15;
+}
+
+/* Whether audio_reset_buffer() can succeed. An existing buffer is freed
+ * and allocated again, so count it as available. */
+static bool audio_buffer_fits(void)
+{
+    return audiobuf_handle > 0 ||
+           core_allocatable() >= pb_block_size(pb_want, true);
+}
+
+bool audio_low_memory(void)
+{
+    return audiobuf_handle <= 0 &&
+           core_allocatable() < pb_block_size(pb_want, false);
+}
+
+/* A block shrunk by another allocation, or allocated small while the heap
+ * was short, stayed that small: true if it is below its full size and that
+ * would fit once it is freed */
+static bool audio_buffer_undersized(void)
+{
+    size_t full = pb_block_size(pb_want, false);
+    return audiobuf_handle > 0 && audiobuf_alloc_size < full &&
+           core_allocatable() + audiobuf_alloc_size >= full;
+}
+
+/* Playback refused: no heap for the playback buffer */
+static void audio_no_memory(void)
+{
+#ifdef HAVE_DEVLOG
+    dev_log_heap(true);
+#endif
+    splash(HZ*2, ID2P(LANG_AUDIO_NO_MEMORY));
+}
+#endif
+
+#ifdef TARGET_AUDIO_BUFFER_CAP
+/* Stopped: give the playback buffer back to the heap. It has no move
+ * callback, so a stopped buffer pinned the heap in two, and one shrunk by
+ * another allocation (a DSP stage, a heavy theme) stayed small until a
+ * reboot; database and theme loads could not use it either. The next play
+ * allocates it afresh. */
+static void audio_release_buffer(void)
+{
+    if (audiobuf_handle <= 0)
+        return;
+    if (buffer_state != AUDIOBUF_STATE_TRASHED)
+        buffering_reset(NULL, 0);
+    buffer_state = AUDIOBUF_STATE_TRASHED;
+    audiobuf_handle = core_free(audiobuf_handle);
+#ifdef TARGET_ARENA_PCM_SIZE
+    arena_ring_place(false);
+    codec_extra = NULL;
+#endif
+}
+#endif
+
 static void audio_reset_buffer(void)
 {
     if (audiobuf_handle > 0)
     {
+#ifdef TARGET_AUDIO_BUFFER_CAP
+        /* Close the buffering handles while their list (inside this buffer)
+         * is intact: the new buffer may not come back at the same place
+         * with the old contents (the fallback below allocates after other
+         * blocks moved), and buffering_reset() then walked garbage forever
+         * (audio thread hung in buffering_reset/bufclose). */
+        if (buffer_state != AUDIOBUF_STATE_TRASHED)
+            buffering_reset(NULL, 0);
+#endif
         core_free(audiobuf_handle);
         audiobuf_handle = 0;
     }
+#ifdef TARGET_ARENA_PCM_SIZE
+    /* A codec still resident from the last track (AAC, Vorbis) can cover
+     * the arena's top: it reloads after the restart anyway */
+    if (pb_want.arena_ring && !arena_ring_on)
+        codec_unload();
+    arena_ring_place(pb_want.arena_ring);
+    struct pb_carving have = { arena_ring_on, pb_want.lend && !arena_ring_on };
+    pb_made = pb_want;
+#endif
     if (core_allocatable() < pcmbuf_size_reqd())
         talk_buffer_set_policy(TALK_BUFFER_LOOSE); /* back off voice buffer */
+#ifdef TARGET_AUDIO_BUFFER_CAP
+    /* A bounded input buffer leaves heap for menus and games. Include PCM
+     * descriptors, guard, alignment and scratch, not just the PCM ring. */
+    /* Keep the total pointer-aligned: the buffering ring length must be a
+     * multiple of the word size or its handles become unaligned after a wrap. */
+    filebuflen = pb_block_size(have, false);
+    audiobuf_handle = core_alloc_ex(filebuflen, &ops);
+    if (audiobuf_handle <= 0)
+    {
+        dev_log("audio buffer: cap %lu does not fit, largest %lu",
+                    (unsigned long)filebuflen, (unsigned long)core_allocatable());
+        /* A heavy theme can leave less heap than the cap: take the largest
+         * block (less some headroom) if it still holds the guard and a
+         * little file data, else fail and let playback refuse (no panic) */
+        size_t avail = audio_buffer_fallback_size();
+        if (avail >= pb_block_size(have, true))
+        {
+            filebuflen = avail;
+            audiobuf_handle = core_alloc_ex(filebuflen, &ops);
+        }
+        if (audiobuf_handle <= 0)
+        {
+            audiobuf_handle = 0;
+            return;
+        }
+    }
+    audiobuf_alloc_size = filebuflen;
+#else
     audiobuf_handle = core_alloc_maximum(&filebuflen, &ops);
+#endif
 
     if (audiobuf_handle > 0)
         audio_reset_buffer_noalloc(core_get_data(audiobuf_handle));
@@ -1235,8 +1592,33 @@ static void audio_handle_track_load_status(int trackstat)
             break;
 
     case LOAD_TRACK_ERR_START_CODEC:
+#ifdef YP3_SL6801
+        /* Stop once every track the auto skips reach has failed, plus one
+         * retry (a load can fail while a skin parse holds the arena) */
+        if (trackstat == LOAD_TRACK_ERR_START_CODEC &&
+            ++codec_start_failures > (global_settings.repeat_mode == REPEAT_ONE ?
+                                      1 : playlist_amount()))
+        {
+            dev_log("codec start failed %d times: stop", codec_start_failures);
+            codec_start_failures = 0;
+            audio_queue_post(Q_AUDIO_STOP, 0);
+            break;
+        }
+#endif
         audio_queue_post(Q_AUDIO_CODEC_COMPLETE, CODEC_ERROR);
         break;
+
+#ifdef TARGET_AUDIO_BUFFER_CAP
+    case LOAD_TRACK_ERR_FAILED:
+        if (audiobuf_handle <= 0 && play_status != PLAY_STOPPED)
+        {
+            /* No playback buffer fits beside what holds the heap: stop
+             * and say so instead of sitting silent in "playing" */
+            audio_stop_playback();
+            audio_no_memory();
+        }
+        break;
+#endif
 
     default:
         break;
@@ -1413,6 +1795,8 @@ static void audio_playlist_track_change(void)
 
     if (id3)
     {
+        /* Soak checks tell a skipped file from the next one by this */
+        dev_log("track: %s", id3->path);
         send_track_event(PLAYBACK_EVENT_TRACK_CHANGE,
                          track_event_flags, id3);
         iap_on_track_playback_index(playlist_get_display_index() - 1, false);
@@ -1842,6 +2226,9 @@ static bool audio_start_codec(bool auto_skip)
     }
 
     buf_pin_handle(info.id3_hid, false);
+#ifdef YP3_SL6801
+    codec_start_failures = 0;
+#endif
     return true;
 
     (void)auto_skip; /* ifndef HAVE_TAGCACHE */
@@ -2057,6 +2444,12 @@ static bool audio_buffer_codec(struct track_info *track_infop,
     if (!codec_fn)
         return false;
 
+#ifdef HAVE_XIP_CODECS
+    /* a codec in flash loads from there, with no file to buffer */
+    if (codec_in_flash(codec_fn))
+        return true;
+#endif
+
     char codec_path[MAX_PATH+1]; /* Full path to codec */
     codec_get_full_path(codec_path, codec_fn);
 
@@ -2146,13 +2539,14 @@ static int audio_load_track(void)
         if (!path)
             break;
 
-        /* Test for broken playlists by probing for the files */
-        if (file_exists(path))
-        {
-            fd = open(path, O_RDONLY);
-            if (fd >= 0)
-                break;
-        }
+        /* Test for broken playlists by opening the files: open() fails for
+           missing paths (a directory opens, as file_exists() accepted it
+           too), and a separate file_exists() probe would walk the path a
+           second time (without a dircache a walk scans each directory,
+           ~0.2 s for a miss in a large root) */
+        fd = open(path, O_RDONLY);
+        if (fd >= 0)
+            break;
         logf("Open failed %s", path);
 
         /* only skip if failed track has a successor in playlist */
@@ -2166,6 +2560,18 @@ static int audio_load_track(void)
         if (playlist_peek(playlist_peek_offset, NULL, 0))
             playlist_next(0);
     }
+
+#ifdef YP3_SL6801
+    /* The last entry did not open either (deleted, a bad path): end here
+     * as at the playlist's end. Its id3 handle would never finish, as the
+     * buffering thread cannot open the file either, and playback would sit
+     * at 0/0 for good (TS17: `play` of a missing file). */
+    if (path && fd < 0)
+    {
+        dev_log("track: %s did not open, the playlist's last", path);
+        path = NULL;
+    }
+#endif
 
     if (!path)
     {
@@ -2274,10 +2680,17 @@ static int audio_finish_load_track(struct track_info *infop)
 
     struct track_info user_cur;
 
-#ifdef HAVE_PLAY_FREQ
+#if defined(HAVE_PLAY_FREQ) || defined(TARGET_ARENA_PCM_SIZE)
     track_list_user_current(0, &user_cur);
     bool is_current_user = infop->self_hid == user_cur.self_hid;
-    if (audio_auto_change_frequency(track_id3, is_current_user))
+    if (
+#ifdef HAVE_PLAY_FREQ
+        audio_auto_change_frequency(track_id3, is_current_user) ||
+#endif
+#ifdef TARGET_ARENA_PCM_SIZE
+        audio_arena_ring_change(track_id3, is_current_user) ||
+#endif
+        false)
     {
         // frequency switch requires full re-buffering, so stop buffering
         filling = STATE_STOPPED;
@@ -2473,9 +2886,32 @@ static int audio_fill_file_buffer(void)
        file size shouldn't have changed so we can go straight from
        AUDIOBUF_STATE_VOICED_ONLY to AUDIOBUF_STATE_INITIALIZED */
     if (buffer_state != AUDIOBUF_STATE_INITIALIZED ||
-        !pcmbuf_is_same_size())
+        !pcmbuf_is_same_size()
+#ifdef TARGET_ARENA_PCM_SIZE
+        || pb_want.arena_ring != pb_made.arena_ring
+        || pb_want.lend != pb_made.lend
+#endif
+        )
     {
+#ifdef YP3_SL6801
+        /* Tracks still loaded: a remake here closes their handles under
+         * the track list and the codec. A sink switch changes the rate,
+         * and with it the size of a rate-sized PCM ring, without asking
+         * for a remake; a fill can also run before a posted one. Restart
+         * as the remake does, which clears the list first and resumes. */
+        if (!track_list_empty())
+        {
+            dev_log("playback: buffer remake with %u tracks loaded: restart",
+                    track_list.count);
+            audio_queue_post(Q_AUDIO_REMAKE_AUDIO_BUFFER, 0);
+            return LOAD_TRACK_ERR_BUSY;
+        }
+#endif
         audio_reset_buffer();
+#ifdef TARGET_AUDIO_BUFFER_CAP
+        if (audiobuf_handle <= 0)
+            return LOAD_TRACK_ERR_FAILED;   /* not enough heap left */
+#endif
     }
 
     logf("Starting buffer fill");
@@ -2537,6 +2973,23 @@ static void audio_on_buffering(int event)
     case BUFFER_EVENT_BUFFER_LOW:
         if (filling != STATE_FULL && filling != STATE_END_OF_PLAYLIST)
             return; /* Should be nothing left to fill */
+
+#ifdef TARGET_AUDIO_BUFFER_CAP
+        /* A capped buffer stays below the watermark (one second of audio,
+           more than the buffer at 256 kbps) while the last track is still
+           buffering, so this event comes every half second. Each retry
+           reopened the next track and reparsed its metadata for the
+           unbuffered id3: without a dircache and with a large tag ~0.6 s
+           of card reads that starved the codec. Nothing can be loaded
+           after the last track until it is in. */
+        if (filling == STATE_FULL)
+        {
+            struct track_info last;
+            if (track_list_last(0, &last) &&
+                buf_handle_remaining(last.audio_hid) > 0)
+                return;
+        }
+#endif
 
         /* Clear old tracks and continue buffering where it left off */
         action = TRACK_LIST_KEEP_NEW;
@@ -2781,6 +3234,10 @@ static void audio_finalise_track_change(void)
 #ifdef HAVE_PLAY_FREQ
     if (filling == STATE_STOPPED)
         audio_auto_change_frequency(track_id3, true);
+#endif
+#ifdef TARGET_ARENA_PCM_SIZE
+    if (filling == STATE_STOPPED)
+        audio_arena_ring_change(track_id3, true);
 #endif
 }
 
@@ -3060,6 +3517,14 @@ static void audio_start_playback(const struct audio_resume_info *resume_info,
         }
         else
         {
+#ifdef TARGET_ARENA_PCM_SIZE
+            /* A new start chooses the ring's place again, as a cold one.
+             * If that remakes the buffer (audio_fill_file_buffer), the old
+             * ring must not be playing any more: it may be freed. */
+            pb_want = pb_cold;
+            if (!arena_ring_on)
+                pcmbuf_play_stop();
+#endif
             /* This is more-or-less treated as manual track transition */
             /* Save resume information for current track */
             audio_playlist_track_finish();
@@ -3081,6 +3546,21 @@ static void audio_start_playback(const struct audio_resume_info *resume_info,
         /* Cold playback start from a stopped state */
         logf("%s(%lu, %lu): starting", __func__, resume.elapsed,
              resume.offset);
+#ifdef TARGET_ARENA_PCM_SIZE
+        pb_want = pb_cold;
+#endif
+
+#ifdef TARGET_AUDIO_BUFFER_CAP
+        if (buffer_state != AUDIOBUF_STATE_INITIALIZED && !audio_buffer_fits())
+        {
+            /* No heap for the playback buffer (a heavy theme): refuse
+             * before any state changes rather than sit in "playing" with
+             * nothing loaded */
+            queue_reply(&audio_queue, 0);
+            audio_no_memory();
+            return;
+        }
+#endif
 
         /* Set audio parameters */
 #if INPUT_SRC_CAPS != 0
@@ -3120,6 +3600,12 @@ static void audio_start_playback(const struct audio_resume_info *resume_info,
         /* Send coldstart event */
         send_event(PLAYBACK_EVENT_START_PLAYBACK, NULL);
     }
+
+#ifdef TARGET_AUDIO_BUFFER_CAP
+    /* The track list is empty here: make an undersized buffer whole again */
+    if (audio_buffer_undersized())
+        buffer_state = AUDIOBUF_STATE_TRASHED;
+#endif
 
     /* Fill the buffer */
     int trackstat = audio_fill_file_buffer();
@@ -3458,6 +3944,11 @@ static void audio_on_ff_rewind(long time)
         {
             // track is not yet loaded so simply update resume details for upcoming finish_load_track and quit
             playing_id3_sync(&cur_info, &(struct audio_resume_info){ time, 0 }, true);
+#ifdef PLAYBACK_SEEK_UNLOADED_ENDS_FFRW
+            /* the load starts the codec at 'time': no seek will complete */
+            audio_ff_rewind_end();
+            codec_seeking = false;
+#endif
             return;
         }
 
@@ -3608,6 +4099,13 @@ void audio_playback_handler(struct queue_event *ev)
         case Q_AUDIO_STOP:
             LOGFQUEUE("playback < Q_AUDIO_STOP");
             audio_stop_playback();
+#ifdef TARGET_AUDIO_BUFFER_CAP
+            /* only for audio_stop(): the shrink callback and
+             * audio_hard_stop() (data 1) go on to shrink or free the
+             * buffer themselves */
+            if (ev->data == 0)
+                audio_release_buffer();
+#endif
             if (ev->data != 0)
                 queue_clear(&audio_queue);
             return; /* no more playback */
@@ -3620,11 +4118,19 @@ void audio_playback_handler(struct queue_event *ev)
         case Q_AUDIO_SKIP:
             LOGFQUEUE("playback < Q_AUDIO_SKIP");
             audio_on_skip();
+#ifdef YP3_SL6801
+            if (play_status == PLAY_STOPPED)
+                return; /* just zeroed skip_offset (audio_thread.c) */
+#endif
             break;
 
         case Q_AUDIO_DIR_SKIP:
             LOGFQUEUE("playback < Q_AUDIO_DIR_SKIP");
             audio_on_dir_skip(ev->data);
+#ifdef YP3_SL6801
+            if (play_status == PLAY_STOPPED)
+                return;
+#endif
             break;
 
         case Q_AUDIO_PRE_FF_REWIND:
@@ -3883,6 +4389,31 @@ bool audio_pcmbuf_may_play(void)
     return play_status == PLAY_PLAYING && !ff_rw_mode && !pause_on_track_change;
 }
 
+#ifdef HAVE_DEVLOG
+/* The state machine for a dev stall dump (dev_shell.c): where a play that
+ * never starts stopped */
+void audio_dev_state(void)
+{
+    dev_log("  audio: status %d filling %d buffer %d tracks %u (%d %d %d) "
+            "loading %d skip %d queue %d freq %u",
+            (int)play_status, (int)filling, (int)buffer_state,
+            track_list.count, track_list.first_hid, track_list.current_hid,
+            track_list.last_hid, track_list.in_progress_hid,
+            (int)skip_pending, queue_count(&audio_queue),
+            mixer_get_frequency());
+    /* what the WPS shows: a playing id3 of length 0 and an elapsed that
+     * never moves (TS17 torture 17 step 60, after AVRCP skips while
+     * stopped, Play, Pause, Play) */
+    struct mp3entry *id3 = id3_get(PLAYING_ID3);
+    dev_log("  audio: skip_offset %d codec_skip %d ff_rw %d pause_otc %d "
+            "key %u/%u playing %lu/%lu %s",
+            skip_offset, (int)codec_skip_pending, (int)ff_rw_mode,
+            (int)pause_on_track_change, position_key,
+            pcmbuf_get_position_key(), (unsigned long)id3->elapsed,
+            (unsigned long)id3->length, id3->path[0] ? id3->path : "-");
+}
+#endif
+
 
 /** -- External interfaces -- **/
 
@@ -4002,7 +4533,14 @@ void audio_hard_stop(void)
 #endif
     /* Stop PCM */
     pcm_play_stop();
+    /* A plugin may reuse this storage. Rebuild all playback pointers before
+     * the next track, even when the PCM configuration has not changed. */
+    buffer_state = AUDIOBUF_STATE_TRASHED;
     audiobuf_handle = core_free(audiobuf_handle);
+#ifdef TARGET_ARENA_PCM_SIZE
+    arena_ring_place(false);
+    codec_extra = NULL;
+#endif
 }
 
 /* Resume playback if paused */

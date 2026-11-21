@@ -599,6 +599,12 @@ while(<WPS>) {
         } elsif ($has_wps eq "no") {
             $wps = '';
         }
+        # a target's own version of a resolution's skin: <skin>.<model>.wps
+        if ($wps) {
+            my $own = $wps;
+            $own =~ s/\.wps$/.$modelname.wps/;
+            $wps = $own if (-e "$wpsdir/$own");
+        }
 
         if ($has_sbs eq "yes" && !$sbs) {
             $sbs = check_skinfile("sbs");

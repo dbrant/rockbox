@@ -23,12 +23,14 @@
 #include "system.h"
 #include <string.h>
 #include <errno.h>
+#include <stdio.h>
 #include "debug.h"
 #include "file.h"
 #include "fileobj_mgr.h"
 #include "disk_cache.h"
 #include "rb_namespace.h"
 #include "string-extra.h"
+#include "devlog.h"
 
 /* Define LOGF_ENABLE to enable logf output in this file */
 //#define LOGF_ENABLE
@@ -100,6 +102,30 @@ static int alloc_filestr(struct filestr_desc **filep)
     DEBUGF("Too many files open\n");
     return -1;
 }
+
+#ifdef HAVE_DEVLOG
+int dev_files_open(bool log)
+{
+    char line[MAX_OPEN_FILES * 20 + 1];
+    int n = 0, len = 0;
+    line[0] = '\0';
+    for (int fildes = 0; fildes < MAX_OPEN_FILES; fildes++)
+    {
+        struct filestr_desc *file = &open_streams[fildes];
+        uint32_t flags = file->stream.flags;
+        if (!flags)
+            continue;
+        n++;
+        if (log && len < (int)sizeof line)
+            len += snprintf(line + len, sizeof line - len, " %d:%lu/%lx",
+                            fildes, file->sizep ? (unsigned long)*file->sizep
+                                                : 0ul, (unsigned long)flags);
+    }
+    if (log)
+        dev_log("files open %d of %d:%s", n, MAX_OPEN_FILES, line);
+    return n;
+}
+#endif
 
 /* return the file size in sectors */
 static inline unsigned long filesize_sectors(uint16_t sector_size, file_size_t size)

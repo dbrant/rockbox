@@ -51,6 +51,13 @@
 #include "iap.h"
 #endif
 
+#if defined(HAVE_BLUETOOTH_HID) && !defined(BOOTLOADER)
+#include "bluetooth.h"
+#if defined(BUTTON_MAIN) && (BUTTON_MAIN & BUTTON_PAD_ALL)
+#error "the target's buttons overlap BUTTON_PAD_*: set BUTTON_PAD_SHIFT"
+#endif
+#endif
+
 static long lastbtn;   /* Last valid button status */
 static long last_read; /* Last button status, for debouncing/filtering */
 static bool flipped;  /* buttons can be flipped to match the LCD flip */
@@ -572,6 +579,10 @@ static int button_read(int *data)
     int btn = button_read_device();
 #endif
     int retval;
+
+#if defined(HAVE_BLUETOOTH_HID) && !defined(BOOTLOADER)
+    btn |= bt_hid_buttons();    /* a Bluetooth game controller or keyboard */
+#endif
 
 #ifdef HAVE_LCD_FLIP
     if (btn && flipped)

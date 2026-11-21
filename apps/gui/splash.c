@@ -34,6 +34,9 @@
 #include "font.h"
 #ifndef BOOTLOADER
 #include "misc.h" /* get_current_activity */
+#ifdef HAVE_DEVLOG
+#include "dev_shell.h"
+#endif
 #endif
 
 static long progress_next_tick, talked_tick;
@@ -375,6 +378,11 @@ void splashf(int ticks, const char *fmt, ...)
     /* If fmt is a lang ID then get the corresponding string (which
        still might contain % place holders). */
     fmt = P2STR((unsigned char *)fmt);
+#ifdef HAVE_DEVLOG
+    va_start(ap, fmt);
+    dev_splash(fmt, ap);
+    va_end(ap);
+#endif
     FOR_NB_SCREENS(i)
     {
         struct screen * screen = &(screens[i]);

@@ -27,6 +27,14 @@
 #include "timefuncs.h"
 #include "settings.h"
 #include "string-extra.h"
+#ifdef HAVE_RDS_EXTENDED
+#include <ctype.h>
+#include "tuner.h"
+#endif
+
+#if defined(HAVE_RDS_EXTENDED) && !(CONFIG_RDS & RDS_CFG_PROCESS)
+#error "HAVE_RDS_EXTENDED decodes the groups itself: it needs RDS_CFG_PROCESS"
+#endif
 
 #define TIMED_OUT(tick) \
     TIME_AFTER(current_tick, (tick))
@@ -71,6 +79,38 @@ static long rt_timeout;         /* timeout to receive full group */
 static int  rt_abflag;          /* message change flag */
 static int  rt_data_idx;        /* rt_data[0 or 1] */
 #define RT_DATA_INC(x) rt_data[rt_data_idx ^= (x)]
+
+#ifdef HAVE_RDS_EXTENDED
+/* programme type, taken like the PI code: two groups in a row agree */
+static uint8_t  pty_code;
+static uint8_t  pty_last;
+
+/* clock time: the tuner reports errors in blocks A and B only, and the time
+ * is in blocks C and D, so a time is taken once the next minute's agrees */
+#define CT_SLACK_SECONDS 5
+static time_t   ct_pending;
+static long     ct_pending_tick;
+
+/* RadioText Plus (EBU Tech Review 307): AID 0x4BD7 in group 3A names the
+ * group carrying the tags; each tag marks text in the current RadioText */
+#define RTP_AID         0x4BD7
+#define RTP_ITEM_TITLE  1
+#define RTP_ITEM_ARTIST 4
+#define RTP_SETTLE      (10 * HZ) /* a new item's RadioText is in by then */
+enum { RTP_TITLE, RTP_ARTIST, RTP_NUM_TAGS };
+static struct rtp_tag {
+    long    tick;               /* when received */
+    uint8_t start;              /* first character in the RadioText */
+    uint8_t len;                /* characters after the first */
+    bool    valid;
+} rtp_tags[RTP_NUM_TAGS];
+static uint8_t  rtp_group;      /* tag group type code (0: no RT+) */
+static int8_t   rtp_toggle;     /* item toggle: a new item clears tags */
+static bool     rtp_running;    /* item running bit */
+static long     rtp_toggle_tick;
+static long     rt_copy_tick;   /* rt_copy last changed */
+static int      rt_copy_abflag; /* its A/B flag */
+#endif /* HAVE_RDS_EXTENDED */
 #endif /* (CONFIG_RDS & RDS_CFG_PROCESS) */
 
 /* RDS code table G0 to UTF-8 translation */
@@ -199,6 +239,14 @@ void rds_reset(void)
     pi_last    = 0;
     ps_segment = 0;
     rt_segment = 0;
+#ifdef HAVE_RDS_EXTENDED
+    pty_code   = 0;
+    pty_last   = 0;
+    ct_pending = 0;
+    rtp_group  = 0;
+    rtp_toggle = -1;
+    memset(rtp_tags, 0, sizeof rtp_tags);
+#endif
 #endif /* (CONFIG_RDS & RDS_CFG_PROCESS) */
 }
 
@@ -231,6 +279,12 @@ static void rds_set_time(time_t time)
     ct_data = time;
 #ifdef CONFIG_RTC
     if (ct_data && global_settings.sync_rds_time) {
+#ifdef HAVE_RDS_EXTENDED
+        /* already right: leave the clock (and its rate calibration) be */
+        time_t now = mktime(get_time());
+        if (now >= ct_data - 2 && now <= ct_data + 2)
+            return;
+#endif
         struct tm *tm = gmtime(&ct_data);
 
         set_time(tm);
@@ -344,6 +398,12 @@ static void handle_group2(const uint16_t data[4])
 
     /* two messages in a row must be the same */
     if (memcmp(rt, RT_DATA_INC(1), pos) == 0) {
+#ifdef HAVE_RDS_EXTENDED
+        if (memcmp(rt_copy, rt, pos) != 0 || abflag != rt_copy_abflag) {
+            rt_copy_tick = current_tick;
+            rt_copy_abflag = abflag;
+        }
+#endif
         memcpy(rt_copy, rt, pos);
         SET_TIMEOUT(rt_copy_tmo, TEXT_TIMEOUT);
     }
@@ -380,9 +440,62 @@ static void handle_group4a(const uint16_t data[4])
         seconds += hour * 3600;
         seconds += minute * 60;
         seconds += ((offset_sig == 0) ? offset_abs : -offset_abs) * 1800;
+#ifdef HAVE_RDS_EXTENDED
+        long late = (seconds - ct_pending) - (current_tick - ct_pending_tick) / HZ;
+        bool agree = ct_pending && seconds > ct_pending &&
+                     late >= -CT_SLACK_SECONDS && late <= CT_SLACK_SECONDS;
+        ct_pending = seconds;
+        ct_pending_tick = current_tick;
+        if (agree)
+            rds_set_time(seconds);
+#else
         rds_set_time(seconds);
+#endif
     }
 }
+
+#ifdef HAVE_RDS_EXTENDED
+/* handles a group 3A packet (open data application identification) */
+static void handle_group3a(const uint16_t data[4])
+{
+    /* RT+ uses version A groups only; 0 would be no group at all */
+    int group = data[1] & 0x1F;
+    if (data[3] == RTP_AID && group != 0 && !(group & 1)) {
+        rtp_group = group;
+    }
+}
+
+/* handles an RT+ tag group: toggle, running, then two tags of content type
+ * (6 bits), start (6) and length (6, then 5) */
+static void handle_rtplus(const uint16_t data[4])
+{
+    const struct { int type, start, len; } tag[2] = {
+        { ((data[1] & 7) << 3) | (data[2] >> 13),
+          (data[2] >> 7) & 0x3F, (data[2] >> 1) & 0x3F },
+        { ((data[2] & 1) << 5) | (data[3] >> 11),
+          (data[3] >> 5) & 0x3F, data[3] & 0x1F },
+    };
+    int toggle = (data[1] >> 4) & 1;
+
+    if (toggle != rtp_toggle) {
+        rtp_toggle = toggle;
+        rtp_toggle_tick = current_tick;
+        memset(rtp_tags, 0, sizeof rtp_tags);
+    }
+    rtp_running = (data[1] >> 3) & 1;
+
+    for (int i = 0; i < 2; i++) {
+        int slot = tag[i].type == RTP_ITEM_TITLE  ? RTP_TITLE :
+                   tag[i].type == RTP_ITEM_ARTIST ? RTP_ARTIST : -1;
+        if (slot >= 0 && tag[i].start + tag[i].len < 64) {
+            rtp_tags[slot].tick  = current_tick;
+            rtp_tags[slot].start = tag[i].start;
+            rtp_tags[slot].len   = tag[i].len;
+            rtp_tags[slot].valid = true;
+        }
+    }
+}
+#endif /* HAVE_RDS_EXTENDED */
 
 /* processes one rds packet */
 void rds_process(const uint16_t data[4])
@@ -395,6 +508,14 @@ void rds_process(const uint16_t data[4])
         pi_code = pi;
     }
     pi_last = pi;
+
+#ifdef HAVE_RDS_EXTENDED
+    uint8_t pty = (data[1] >> 5) & 0x1F;
+    if (pty == pty_last) {
+        pty_code = pty;
+    }
+    pty_last = pty;
+#endif
 
     /* handle rds data based on group */
     group = (data[1] >> 11) & 0x1F;
@@ -413,6 +534,17 @@ void rds_process(const uint16_t data[4])
     case 8: /* group 4A: clock-time */
         handle_group4a(data);
         break;
+#ifdef HAVE_RDS_EXTENDED
+    case 6: /* group 3A: open data application identification */
+        handle_group3a(data);
+        break;
+
+    default:
+        if (group == rtp_group) {
+            handle_rtplus(data);
+        }
+        break;
+#endif
     }
 
     register_activity();
@@ -451,6 +583,125 @@ void rds_push_info(enum rds_info_id info_id, uintptr_t data, size_t size)
 }
 #endif /* (CONFIG_RDS & RDS_CFG_PUSH) */
 
+#ifdef HAVE_RDS_EXTENDED
+/* Programme type names: RBDS (NRSC-4-B, F.2) in the US and Canada,
+ * RDS (IEC 62106) elsewhere. 0 and unassigned codes have none. */
+static const char * const pty_names_rbds[32] =
+{
+    "", "News", "Information", "Sports", "Talk", "Rock", "Classic Rock",
+    "Adult Hits", "Soft Rock", "Top 40", "Country", "Oldies", "Soft",
+    "Nostalgia", "Jazz", "Classical", "Rhythm and Blues", "Soft R & B",
+    "Foreign Language", "Religious Music", "Religious Talk", "Personality",
+    "Public", "College", "Hablar Espanol", "Musica Espanol", "Hip hop", "",
+    "", "Weather", "Emergency Test", "ALERT! ALERT!",
+};
+
+static const char * const pty_names_rds[32] =
+{
+    "", "News", "Current Affairs", "Information", "Sport", "Education",
+    "Drama", "Culture", "Science", "Varied", "Pop Music", "Rock Music",
+    "Easy Listening", "Light Classical", "Serious Classical", "Other Music",
+    "Weather", "Finance", "Children's Programmes", "Social Affairs",
+    "Religion", "Phone-in", "Travel", "Leisure", "Jazz Music",
+    "Country Music", "National Music", "Oldies Music", "Folk Music",
+    "Documentary", "Alarm Test", "Alarm",
+};
+
+static bool rds_region_rbds(void)
+{
+    return global_settings.fm_region == REGION_US_CANADA;
+}
+
+/* K and W call letters from a US PI code (NRSC-4-B, D.7.1): codes whose
+ * second nibble is 0 are sent as A<first nibble>.., and codes ending in 00
+ * as AF<first two nibbles>; 3-letter and network codes have none */
+static size_t copy_call_letters(char *dst, uint16_t pi, size_t size)
+{
+    char first;
+
+    if ((pi >> 8) == 0xAF) {
+        pi <<= 8;
+    }
+    if ((pi >> 12) == 0xA && ((pi >> 8) & 0xF) >= 1 && ((pi >> 8) & 0xF) <= 9) {
+        pi = (((pi >> 8) & 0xF) << 12) | (pi & 0xFF);
+    }
+    if (pi >= 0x1000 && pi <= 0x54A7) {
+        first = 'K';
+        pi -= 0x1000;
+    }
+    else if (pi >= 0x54A8 && pi <= 0x994F) {
+        first = 'W';
+        pi -= 0x54A8;
+    }
+    else {
+        first = '\0';
+    }
+
+    if (!first || !rds_region_rbds()) {
+        return strlcpy(dst, "", size);
+    }
+    const char call[] = { first, 'A' + pi / 676, 'A' + pi / 26 % 26,
+                          'A' + pi % 26, '\0' };
+    return strlcpy(dst, call, size);
+}
+
+/* An RT+ tag marks the RadioText it was sent with, so it applies to rt_copy
+ * if received since rt_copy last changed, while the station still sends
+ * that RadioText (same A/B flag), and not while a new item's RadioText may
+ * still be on its way */
+static bool rtp_tag_current(const struct rtp_tag *tag)
+{
+    return tag->valid && rtp_running && rt_abflag == rt_copy_abflag &&
+           !TIME_BEFORE(tag->tick, rt_copy_tick) &&
+           (!TIME_BEFORE(rt_copy_tick, rtp_toggle_tick) ||
+            TIMED_OUT(rtp_toggle_tick + RTP_SETTLE));
+}
+
+/* RDS G0 letters and digits; codes from 0x80 are accented letters */
+static bool rds_char_in_word(unsigned char c)
+{
+    return c >= 0x80 || isalnum(c);
+}
+
+/* Tags made for another text cut words (KENZ 97.1 tags "artist - title"
+ * while its RadioText is "POWER 94.9/101.9: artist title"), so none count
+ * unless every tag held starts and ends on a word boundary */
+static bool rtp_tags_fit(void)
+{
+    size_t len = strlen(rt_copy);
+
+    for (int i = 0; i < RTP_NUM_TAGS; i++) {
+        const struct rtp_tag *tag = &rtp_tags[i];
+        size_t end = tag->start + tag->len + 1;
+        if (!tag->valid) {
+            continue;
+        }
+        if (end > len ||
+            (tag->start > 0 && rds_char_in_word(rt_copy[tag->start - 1])) ||
+            (end < len && rds_char_in_word(rt_copy[end]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static size_t copy_rtp_tag(char *dst, int slot, size_t size)
+{
+    const struct rtp_tag *tag = &rtp_tags[slot];
+    char text[sizeof (rt_copy)];
+    size_t end = tag->start + tag->len + 1;
+
+    if (!rtp_tag_current(tag) || !rtp_tags_fit()) {
+        return strlcpy(dst, "", size);
+    }
+    while (end > tag->start && rt_copy[end - 1] == ' ') {
+        end--;
+    }
+    strmemcpy(text, rt_copy + tag->start, end - tag->start);
+    return copy_rds_string(dst, text, size);
+}
+#endif /* HAVE_RDS_EXTENDED */
+
 /* read fully-processed RDS data */
 size_t rds_pull_info(enum rds_info_id info_id, uintptr_t data, size_t size)
 {
@@ -480,6 +731,21 @@ size_t rds_pull_info(enum rds_info_id info_id, uintptr_t data, size_t size)
         }
         size = sizeof (time_t);
         break;
+#ifdef HAVE_RDS_EXTENDED
+    case RDS_INFO_PTY:
+        size = strlcpy((char *)data, (rds_region_rbds() ? pty_names_rbds :
+                                      pty_names_rds)[pty_code], size);
+        break;
+    case RDS_INFO_CALL:
+        size = copy_call_letters((char *)data, pi_code, size);
+        break;
+    case RDS_INFO_ARTIST:
+        size = copy_rtp_tag((char *)data, RTP_ARTIST, size);
+        break;
+    case RDS_INFO_TITLE:
+        size = copy_rtp_tag((char *)data, RTP_TITLE, size);
+        break;
+#endif
 
     default:
         size = 0;

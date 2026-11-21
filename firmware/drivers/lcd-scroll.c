@@ -45,6 +45,7 @@ struct scroll_screen_info LCDFN(scroll_info) =
 
 void LCDFN(scroll_stop)(void)
 {
+    font_text_lock();
     for (int i = 0; i < LCDFN(scroll_info).lines; i++)
     {
         /* inform scroller about end of scrolling */
@@ -53,12 +54,14 @@ void LCDFN(scroll_stop)(void)
         s->scroll_func(s);
     }
     LCDFN(scroll_info).lines = 0;
+    font_text_unlock();
 }
 
 /* Clears scrolling lines that intersect with the area */
 void LCDFN(scroll_stop_viewport_rect)(const struct viewport *vp, int x, int y, int width, int height)
 {
     int i = 0;
+    font_text_lock();
     while (i < LCDFN(scroll_info).lines)
     {
         struct scrollinfo *s = &LCDFN(scroll_info).scroll[i];
@@ -85,6 +88,7 @@ void LCDFN(scroll_stop_viewport_rect)(const struct viewport *vp, int x, int y, i
             i++;
         }
     }
+    font_text_unlock();
 }
 
 /* Stop all scrolling lines in the specified viewport */
@@ -125,9 +129,11 @@ bool LCDFN(scroll_now)(struct scrollinfo *s)
     /*int width = font_getstringsize(s->linebuffer, NULL, NULL, s->vp->font);*/
 
     bool ended = false;
-    /* assume s->scroll_func() don't yield; otherwise this buffer might need
-     * to be mutex'd (the worst case would be minor glitches though) */
+    /* s->scroll_func() may yield in a glyph read: the text lock guards
+     * this buffer where that happens (font.h) */
     static char line_buf[SCROLL_LINE_SIZE];
+
+    font_text_lock();
 
     if (s->bidir)
     {   /* scroll bidirectional */
@@ -180,8 +186,13 @@ bool LCDFN(scroll_now)(struct scrollinfo *s)
     s->vp->drawmode = drawmode;
     s->vp->buffer = framebuf;
 
+    font_text_unlock();
     return ended;
 }
+
+#ifdef HAVE_LCD_UPDATE_SLEEPS
+extern struct frame_buffer_t LCDFN(framebuffer_default);
+#endif
 
 static void LCDFN(scroll_worker)(void)
 {
@@ -196,6 +207,9 @@ static void LCDFN(scroll_worker)(void)
         return;
     }
 
+    /* text output another thread is in the middle of (asleep in a glyph
+     * read) finishes first, while no scroll line's viewport is current */
+    font_text_lock();
     for ( index = 0; index < si->lines; index++ )
     {
         struct scrollinfo *s = &si->scroll[index];
@@ -212,13 +226,35 @@ static void LCDFN(scroll_worker)(void)
         else
             s->offset += si->step;
 
+#ifdef YP3_SL6801
+        /* Read the line's glyphs into the cache before s->vp becomes
+         * current: a glyph read sleeps, and the UI thread would run with
+         * s->vp as its viewport (a forward scroll adds spaces) */
+        font_getstringsize(s->linebuffer, NULL, NULL, s->vp->font);
+        font_getstringsize(" ", NULL, NULL, s->vp->font);
+#endif
+
         /* this runs out of the ui thread, thus we need to
          * save and restore the current viewport since the
          * ui thread is unaware of the swapped viewports. */
         oldvp = LCDFN(set_viewport_ex)(s->vp, 0); /* don't mark the last vp as dirty */
 
+#ifdef HAVE_LCD_UPDATE_SLEEPS
+        /* The panel update sleeps (LCD DMA and mutex). The UI thread would
+         * run meanwhile with s->vp as its current viewport and, when this
+         * thread wakes, lose its own to oldvp: skin text then lands in the
+         * default viewport. Push the line after restoring oldvp instead. */
+        bool push = !(s->vp->flags & VP_FLAG_OWNER_UPDATE) &&
+            s->vp->buffer->stride == LCDFN(framebuffer_default).stride;
+        if (push)
+            s->vp->flags |= VP_FLAG_OWNER_UPDATE;
+#endif
         /* put the line onto the display now */
         bool makedelay = LCDFN(scroll_now(s));
+#ifdef HAVE_LCD_UPDATE_SLEEPS
+        if (push)
+            s->vp->flags &= ~VP_FLAG_OWNER_UPDATE;
+#endif
         if (makedelay)
         {
 #if 0 /* haven't found a case in which this matters .. yet?? --Bilgus */
@@ -233,6 +269,11 @@ static void LCDFN(scroll_worker)(void)
 #else
         LCDFN(set_viewport_ex)(oldvp, 0); /* don't mark the last vp as dirty */
 #endif
+#ifdef HAVE_LCD_UPDATE_SLEEPS
+        if (push)
+            LCDFN(update_rect)(s->vp->x + s->x, s->vp->y + s->y, s->width, s->height);
+#endif
     }
+    font_text_unlock();
 }
 #endif /*!BOOTLOADER*/

@@ -35,6 +35,9 @@
 
 /* Support debug printing of memory blocks */
 //#define BUFLIB_DEBUG_PRINT
+#ifdef HAVE_DEVLOG /* dev shell `mem blocks` */
+#define BUFLIB_DEBUG_PRINT
+#endif
 
 /* Defined by the backend header. */
 struct buflib_context;

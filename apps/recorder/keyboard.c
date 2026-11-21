@@ -440,6 +440,9 @@ static void kbd_draw_buttons(struct keyboard_parameters *pm, struct screen *sc);
 static int keyboard_touchscreen(struct keyboard_parameters *pm,
                                 struct screen *sc, struct edit_state *state);
 #endif
+#ifdef HAVE_KBD_COMPACT_LAYOUT
+static void kbd_draw_hint(struct keyboard_parameters *pm, struct screen *sc);
+#endif
 static void kbd_insert_selected(struct keyboard_parameters *pm,
                                 struct edit_state *state);
 static void kbd_backspace(struct edit_state *state);
@@ -561,8 +564,11 @@ int kbd_input(char* text, int buflen, ucschar_t *kbd)
             }
             else
 #endif /* LCD_WIDTH >= 160 && LCD_HEIGHT >= 96 */
-#if (LCD_WIDTH == 128 && LCD_HEIGHT == 64) || (LCD_WIDTH == 96 && LCD_HEIGHT == 96)
-/*    CLIP PLUS & XDUOO X3                  ||  CLIP ZIP*/
+#if (LCD_WIDTH == 128 && LCD_HEIGHT == 64) || (LCD_WIDTH == 96 && LCD_HEIGHT == 96) \
+    || defined(HAVE_KBD_COMPACT_LAYOUT)
+/*    CLIP PLUS & XDUOO X3                  ||  CLIP ZIP  || compact layout
+ * (YP3, 128x160: 16-cell rows fit its sysfont, all sixteen lines on one
+ * page) */
             {
                 p = "ABCDEFG !?\" $%+'\n"
                     "HIJKLMN 789 &_-`\n"
@@ -584,7 +590,9 @@ int kbd_input(char* text, int buflen, ucschar_t *kbd)
                     "ÓÒÔÕÖØ ÇÐÞÝßÙÚÛÜ\n"
                     "òóôõöø çðþýÿùúûü";
 
-#if ((LCD_WIDTH == 128 && LCD_HEIGHT == 64))
+#if defined(HAVE_KBD_COMPACT_LAYOUT)
+                pm->default_lines = 16;
+#elif ((LCD_WIDTH == 128 && LCD_HEIGHT == 64))
                 pm->default_lines = 4;
 #else
                 pm->default_lines = 8;
@@ -683,6 +691,9 @@ int kbd_input(char* text, int buflen, ucschar_t *kbd)
             sc->clear_display();
             kbd_draw_picker(pm, sc, &state);
             kbd_draw_edit_line(pm, sc, &state);
+#ifdef HAVE_KBD_COMPACT_LAYOUT
+            kbd_draw_hint(pm, sc);
+#endif
 #ifdef HAVE_TOUCHSCREEN
             if (pm->show_buttons)
                 kbd_draw_buttons(pm, sc);
@@ -1437,6 +1448,23 @@ static void kbd_draw_edit_line(struct keyboard_parameters *pm,
 
     sc->set_viewport(last);
 }
+
+#ifdef HAVE_KBD_COMPACT_LAYOUT
+/* Five keys and no touch buttons: name the hold actions (keymap-yp3.c) that
+ * finish the edit on the free line below the grid. */
+static void kbd_draw_hint(struct keyboard_parameters *pm, struct screen *sc)
+{
+    struct viewport vp = pm->kbd_viewports[eKBD_VP_PICKER];
+    vp.y += vp.height;
+    vp.height = sc->getheight() - vp.y;
+    if (vp.height < pm->font_h)
+        return;
+    struct viewport *last = sc->set_viewport(&vp);
+    sc->setfont(pm->curfont);
+    sc->putsxy(0, vp.height - pm->font_h, str(LANG_KBD_HINT));
+    sc->set_viewport(last);
+}
+#endif
 
 #ifdef HAVE_TOUCHSCREEN
 static void kbd_draw_buttons(struct keyboard_parameters *pm, struct screen *sc)

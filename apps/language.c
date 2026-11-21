@@ -43,7 +43,9 @@
 #define HEADER_SIZE 4
 #define SUBHEADER_SIZE 6
 
+#ifndef HAVE_BUILTIN_LANGUAGE_ONLY
 static unsigned char language_buffer[MAX_LANGUAGE_SIZE];
+#endif
 static unsigned char lang_options = 0;
 
 void lang_init(const unsigned char *builtin, unsigned char **dest, int count)
@@ -127,11 +129,32 @@ int lang_load(const char *filename, const unsigned char *builtin,
 
 int lang_core_load(const char *filename)
 {
+#ifdef HAVE_BUILTIN_LANGUAGE_ONLY
+    (void)filename;
+    return 1;
+#else
     return lang_load(filename, core_language_builtin, language_strings,
                      language_buffer, 0, MAX_LANGUAGE_SIZE,
                      LANG_LAST_INDEX_IN_ARRAY);
+#endif
 }
 
+#ifdef HAVE_BUILTIN_LANGUAGE_ONLY
+int lang_english_to_id(const char *english)
+{
+    for (int i = 0; i < LANG_LAST_INDEX_IN_ARRAY; i++)
+        if (!strcmp((const char *)language_strings[i], english))
+            return i;
+    return -1;
+}
+
+const char * lang_id_to_english(int lang_id)
+{
+    if (lang_id >= 0 && lang_id < LANG_LAST_INDEX_IN_ARRAY)
+        return str(lang_id);
+    return ""; /* Not found */
+}
+#else
 int lang_english_to_id(const char *english)
 {
     int i;
@@ -164,6 +187,7 @@ const char * lang_id_to_english(int lang_id)
     }
     return ""; /* Not found */
 }
+#endif /* HAVE_BUILTIN_LANGUAGE_ONLY */
 
 int lang_is_rtl(void)
 {

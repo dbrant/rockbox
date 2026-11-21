@@ -121,6 +121,10 @@ static const struct cp_info cp_info[NUM_CODEPAGES+1] =
 };
 
 static int default_cp = INIT_CODEPAGE;
+#ifdef HAVE_XIP_CODEPAGE_TABLES
+/* Generated from the same bytes used by the existing .cp files. */
+#include "codepage-xip.h"
+#else
 static int default_cp_tid = CP_TID_NONE;
 static int default_cp_handle = 0;
 static int volatile default_cp_table_ref = 0;
@@ -132,6 +136,7 @@ static int volatile cp_table_ref = 0;
 /* non-default codepage table buffer (cannot be bufalloced! playback itself
    may be making the load request) */
 static unsigned short codepage_table[MAX_CP_TABLE_SIZE+1]; // XXX convert to ucschar_t if we ever need > 16bit mappings?
+#endif
 
 #if defined(APPLICATION) && defined(__linux__)
 static const char * const name_codepages_linux[NUM_CODEPAGES+1] =
@@ -164,6 +169,7 @@ const char *get_current_codepage_name_linux(void)
 }
 #endif /* defined(APPLICATION) && defined(__linux__) */
 
+#ifndef HAVE_XIP_CODEPAGE_TABLES
 #ifdef DEFAULT_CP_STATIC_ALLOC
 static unsigned short default_cp_table_buf[MAX_CP_TABLE_SIZE+1];
 #define cp_table_get_data(handle) \
@@ -188,12 +194,14 @@ static unsigned short default_cp_table_buf[MAX_CP_TABLE_SIZE+1];
 #define cp_table_unpin(handle) \
     core_unpin(handle)
 #endif
+#endif /* !HAVE_XIP_CODEPAGE_TABLES */
 
 static const unsigned char utf8comp[6] =
 {
     0x00, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC
 };
 
+#ifndef HAVE_XIP_CODEPAGE_TABLES
 static inline void cptable_tohw16(uint16_t *buf, unsigned int count)
 {
 #ifdef ROCKBOX_BIG_ENDIAN
@@ -248,6 +256,7 @@ static int alloc_and_load_cp_table(int cp, void *buf)
     close(fd);
     return -1;
 }
+#endif /* !HAVE_XIP_CODEPAGE_TABLES */
 
 /* returns number of additional bytes required in encoded string (bytes_count - 1) */
 static int utf8_ucs_get_extra_bytes_count(unsigned long ucs)
@@ -290,8 +299,20 @@ unsigned char* iso_decode(const unsigned char *iso, unsigned char *utf8, int cp,
 /* Recode an iso encoded string to UTF-8 */
 unsigned char* iso_decode_ex(const unsigned char *iso, unsigned char *utf8, int cp, int count, int utf8_size)
 {
-    uint16_t *table = NULL;
+    const uint16_t *table = NULL;
 
+#ifdef HAVE_XIP_CODEPAGE_TABLES
+    if (cp < 0 || cp >= NUM_CODEPAGES)
+        cp = default_cp;
+    int tid = cp_info[cp].tid;
+    switch (tid) {
+    case CP_TID_ISO: table = codepage_xip_iso; break;
+    case CP_TID_932: table = codepage_xip_932; break;
+    case CP_TID_936: table = codepage_xip_936; break;
+    case CP_TID_949: table = codepage_xip_949; break;
+    case CP_TID_950: table = codepage_xip_950; break;
+    }
+#else
     cp_lock_enter();
 
     if (cp < 0 || cp >= NUM_CODEPAGES)
@@ -346,6 +367,7 @@ unsigned char* iso_decode_ex(const unsigned char *iso, unsigned char *utf8, int 
     }
 
     cp_lock_leave();
+#endif /* HAVE_XIP_CODEPAGE_TABLES */
 
     while (count-- && utf8_size > 0) {
         ucschar_t ucs, tmp;
@@ -408,6 +430,7 @@ unsigned char* iso_decode_ex(const unsigned char *iso, unsigned char *utf8, int 
         }
     }
 
+#ifndef HAVE_XIP_CODEPAGE_TABLES
     if (table) {
         cp_lock_enter();
         if (table == codepage_table) {
@@ -417,6 +440,7 @@ unsigned char* iso_decode_ex(const unsigned char *iso, unsigned char *utf8, int 
         }
         cp_lock_leave();
     }
+#endif
 
     return utf8;
 }
@@ -591,6 +615,9 @@ void set_codepage(int cp)
     if (cp < 0 || cp >= NUM_CODEPAGES)
         cp = NUM_CODEPAGES;
 
+#ifdef HAVE_XIP_CODEPAGE_TABLES
+    default_cp = cp;
+#else
     /* load first then swap if load is successful, else just leave it; if
        handle is 0 then we just free the current one; this won't happen often
        thus we don't worry about reusing it and consequently avoid possible
@@ -627,6 +654,7 @@ void set_codepage(int cp)
 
     if (handle > 0)
         cp_table_free(handle);
+#endif
 }
 
 int get_codepage(void)

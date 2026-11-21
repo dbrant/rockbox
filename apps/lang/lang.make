@@ -60,9 +60,10 @@ $(BUILDDIR)/apps/lang/lang-enum.txt: $(BUILDDIR)/lang_enum.h
 	$(SILENT)mkdir -p $(dir $@)
 	$(call PRINTS,GEN $(subst $(BUILDDIR)/,,$@))perl -ne 'print if s|\s+(.*), /\* (\w+).*|$$2:$$1|' < $<  |grep -v 'this:' > $@
 
+ZIP ?= zip
 $(BUILDDIR)/apps/lang/voicestrings.zip: $(VOICEOBJ) $(wildcard $(BUILDDIR)/apps/lang/*.talk) $(BUILDDIR)/apps/lang/voice-corrections.txt $(BUILDDIR)/apps/lang/lang-enum.txt
 	$(call PRINTS,ZIP $(subst $(BUILDDIR)/,,$@))
-	$(SILENT)zip -X -9 -q $@ $(subst $(BUILDDIR)/,,$^)
+	$(SILENT)$(ZIP) -X -9 -q $@ $(subst $(BUILDDIR)/,,$^)
 ifneq ($(REPRODUCIBLE_ZIP),)
 	$(SILENT)strip-nondeterminism $@
 endif

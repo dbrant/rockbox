@@ -558,6 +558,9 @@ sub buildzip {
                 move("$temp_dir/rocks/${plugin}.rock", "$temp_dir/rocks/$dir/sgt_puzzles/${plugin}.rock");
             }
             else {
+                # a category under another (games/arduboy) needs its folder
+                glob_mkdir("$temp_dir/rocks/$dir")
+                    if $dir =~ m{/} and -e "$temp_dir/rocks/${plugin}.rock";
                 move("$temp_dir/rocks/${plugin}.rock", "$temp_dir/rocks/$dir/${plugin}.rock");
             }
             if(-e "$temp_dir/rocks/${plugin}.ovl") {

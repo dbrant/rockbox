@@ -495,11 +495,16 @@ if($prefix) {
  */
 #define str(x) language_strings[x]
 
+#ifdef HAVE_BUILTIN_LANGUAGE_ONLY
+/* the string pointers, constant (in ROM) since nothing can be loaded */
+extern unsigned char * const language_strings[];
+#else
 /* this is the array for holding the string pointers.
    It will be initialized at runtime. */
 extern unsigned char *language_strings[];
 /* this contains the concatenation of all strings, separated by \\0 chars */
 extern const unsigned char core_language_builtin[];
+#endif
 
 #include "${prefix}_enum.h"
 
@@ -524,10 +529,9 @@ MOO
 /* This file was automatically generated using genlang, the strings come
    from "$input" */
 
+#include "config.h"
 #include "$headername"
 
-unsigned char *language_strings[LANG_LAST_INDEX_IN_ARRAY];
-const unsigned char core_language_builtin[] =
 MOO
 ;
 
@@ -568,7 +572,19 @@ MOO
 MOO
     ;
 
-    # Output the target phrases for the source file
+    # Output the target phrases for the source file: a constant pointer
+    # table when only the built-in language exists, else one string blob
+    # that lang_init() indexes at runtime.
+    print CFILE_CORE "#ifdef HAVE_BUILTIN_LANGUAGE_ONLY\n";
+    print CFILE_CORE "unsigned char * const language_strings[LANG_LAST_INDEX_IN_ARRAY] = {\n";
+    for $i (0 .. $idcount[$users{"core"}]-1) {
+        my $dest = $dest{$idnum[$users{"core"}][$i]};
+        $dest = '""' if(!$dest);
+        printf CFILE_CORE ("    (unsigned char *)%s,\n", $dest);
+    }
+    print CFILE_CORE "};\n#else\n";
+    print CFILE_CORE "unsigned char *language_strings[LANG_LAST_INDEX_IN_ARRAY];\n";
+    print CFILE_CORE "const unsigned char core_language_builtin[] =\n";
     for $i (0 .. $idcount[$users{"core"}]-1) {
         my $name=$idnum[$users{"core"}][$i]; # get the ID
         my $dest = $dest{$name}; # get the destination phrase
@@ -586,6 +602,7 @@ MOO
 # Output end of string chunk
     print CFILE_CORE <<MOO
 ;
+#endif /* HAVE_BUILTIN_LANGUAGE_ONLY */
 /* end of generated string list */
 MOO
 ;

@@ -93,6 +93,7 @@ static spx_int64_t get_next_page(spx_ogg_sync_state *oy,spx_ogg_page *og,
     }
 }
 
+#ifndef SPEEX_SEEK_BISECT
 static spx_int64_t seek_backwards(spx_ogg_sync_state *oy, spx_ogg_page *og,
                                   spx_int64_t wantedpos)
 {
@@ -182,7 +183,42 @@ static spx_int64_t seek_backwards(spx_ogg_sync_state *oy, spx_ogg_page *og,
     }
     return -1;
 }
+#endif
 
+#ifdef SPEEX_SEEK_BISECT
+/* Seek to the last page that starts at or before sample POS: bisect the
+ * audio's bytes on the granule of the first page after each midpoint.
+ * Upstream's guess-then-scan failed whenever the guess overshot (its
+ * backward scan ran to the file's start), and the elapsed time then left
+ * the audio: YP3 torture shuffle stuck at 20481/19991 ms on speex_wb.spx */
+static void speex_seek_bisect(spx_int64_t pos, spx_ogg_sync_state *oy,
+                              spx_int64_t headerssize)
+{
+    spx_ogg_page og;
+    spx_int64_t lo = headerssize > 0 ? headerssize : 0;
+    spx_int64_t hi = ci->filesize;
+
+    while (hi - lo > CHUNKSIZE) {
+        spx_int64_t mid = lo + (hi - lo) / 2;
+        ci->seek_buffer(mid);
+        spx_ogg_sync_reset(oy);
+        spx_int64_t off = get_next_page(oy, &og, hi - mid);
+        if (off < 0 || off >= hi) {
+            hi = mid;               /* no page starts in [mid, hi) */
+            continue;
+        }
+        spx_int64_t g = spx_ogg_page_granulepos(&og);
+        if (g >= 0 && g < pos)
+            lo = off;               /* this page ends before POS */
+        else
+            hi = mid;
+    }
+    ci->seek_buffer(lo);
+    spx_ogg_sync_reset(oy);
+}
+#endif
+
+#ifndef SPEEX_SEEK_BISECT
 static int speex_seek_page_granule(spx_int64_t pos, spx_int64_t curpos,
                                    spx_ogg_sync_state *oy,
                                    spx_int64_t headerssize)
@@ -292,6 +328,7 @@ static int speex_seek_page_granule(spx_int64_t pos, spx_int64_t curpos,
 
     return -1;
 }
+#endif
 
 static void *process_header(spx_ogg_packet *op,
                             int enh_enabled,
@@ -453,9 +490,14 @@ enum codec_status codec_run(void)
                          (long long int)page_granule, (long)param,
                          (long long int)((page_granule/samplerate)*1000), samplerate);
 
+#ifdef SPEEX_SEEK_BISECT
+                    speex_seek_bisect(((spx_int64_t)param/1000) *
+                                      (spx_int64_t)samplerate, &oy, headerssize);
+#else
                     speex_seek_page_granule(((spx_int64_t)param/1000) *
                                             (spx_int64_t)samplerate,
                                             page_granule, &oy, headerssize);
+#endif
                 }
 
                 ci->set_elapsed(param);

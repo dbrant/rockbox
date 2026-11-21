@@ -39,6 +39,11 @@
 
 /* XXX: is it a suitable value ? */
 #define MAX_CODED_SUPERFRAME_SIZE 16384
+#ifdef WMA_HEAP_BUFFERS
+#define LAST_SUPERFRAME_SIZE(s) ((s)->last_superframe_size)
+#else
+#define LAST_SUPERFRAME_SIZE(s) MAX_CODED_SUPERFRAME_SIZE
+#endif
 
 #define M_PI    3.14159265358979323846
 
@@ -74,6 +79,13 @@
 #endif
 
 
+/* Set by the target config:
+ * WMA_HEAP_BUFFERS: the buffers (~160 KB static) come from the codec heap
+ * and the playback memory lent to the codec, sized for the file at
+ * wma_decode_init(); the noise table is generated instead of stored.
+ * WMA_NO_SOFT_FLOAT: the LSP curve's x^-1/4 in integer code: soft float (no
+ * FPU in use) ran per coefficient, from flash for an XIP codec. */
+
 #define VLCBITS 7       /*7 is the lowest without glitching*/
 #define VLCMAX ((22+VLCBITS-1)/VLCBITS)
 
@@ -96,6 +108,12 @@ CoefVLCTable;
 typedef struct WMADecodeContext
 {
     GetBitContext gb;
+#ifdef WMA_HEAP_BUFFERS
+    /* where wma_decode_init() takes its buffers: the lent block, then the
+       codec heap (set by the caller) */
+    uint8_t *heap[2];
+    size_t heap_left[2];
+#endif
 
     int nb_block_sizes;  /* number of block sizes */
 
@@ -142,23 +160,51 @@ typedef struct WMADecodeContext
     uint8_t ms_stereo; /* true if mid/side stereo mode */
     uint8_t channel_coded[MAX_CHANNELS]; /* true if channel is coded */
     int exponents_bsize[MAX_CHANNELS];      // log2 ratio frame/exp. length
+#ifdef WMA_HEAP_BUFFERS
+    fixed32 *exponents[MAX_CHANNELS];       /* [frame_len] */
+#else
     fixed32 exponents[MAX_CHANNELS][BLOCK_MAX_SIZE] MEM_ALIGN_ATTR;
+#endif
     fixed32 max_exponent[MAX_CHANNELS];
+#ifdef WMA_HEAP_BUFFERS
+    int16_t *coefs1[MAX_CHANNELS];          /* [frame_len], in imdct_out */
+    fixed32 *imdct_out;     /* [frame_len]: the IMDCT's middle half */
+#else
     int16_t coefs1[MAX_CHANNELS][BLOCK_MAX_SIZE];
+#endif
     fixed32 (*coefs)[MAX_CHANNELS][BLOCK_MAX_SIZE];
+#ifdef WMA_HEAP_BUFFERS
+    uint16_t *windows[BLOCK_NB_SIZES];  /* 0.16, below 1 */
+#else
     fixed32 *windows[BLOCK_NB_SIZES];
+#endif
     /* output buffer for one frame and the last for IMDCT windowing */
     fixed32 (*frame_out)[MAX_CHANNELS][BLOCK_MAX_SIZE*2];
 
     /* last frame info */
+#ifdef WMA_HEAP_BUFFERS
+    uint8_t *last_superframe;   /* last_superframe_size + 4, with the
+                                   bit reservoir only */
+    int last_superframe_size;
+#else
     uint8_t last_superframe[MAX_CODED_SUPERFRAME_SIZE + 4] MEM_ALIGN_ATTR; /* padding added */
+#endif
     int last_bitoffset;
     int last_superframe_len;
+#ifdef WMA_HEAP_BUFFERS
+    uint32_t noise_seed;    /* the noise table's generator */
+    int noise_scale;        /* its 16.16 scale (x16), in units of 2^-31 */
+#else
     fixed32 *noise_table;
+#endif
     int noise_index;
     fixed32 noise_mult; /* XXX: suppress that and integrate it in the noise array */
     /* lsp_to_curve tables */
+#ifdef WMA_HEAP_BUFFERS
+    fixed32 *lsp_cos_table;     /* [frame_len], LSP exponents only */
+#else
     fixed32 lsp_cos_table[BLOCK_MAX_SIZE] MEM_ALIGN_ATTR;
+#endif
     void *lsp_pow_m_table1;
     void *lsp_pow_m_table2;
 

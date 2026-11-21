@@ -47,12 +47,20 @@ extern "C" {
 #define MAX_L_E      5
 
 typedef struct {
+#ifdef FAAD_SBR_LOWMEM
+    real_t  x[32*10]; /* single ring buffer, see sbr_qmf_analysis_32() */
+#else
     real_t  x[2*32*10];
+#endif
     int16_t x_index;
 } qmfa_info;
 
 typedef struct {
+#ifdef FAAD_SBR_LOWMEM
+    real_t  v[64*20]; /* single ring buffer, see sbr_qmf_synthesis_64() */
+#else
     real_t  v[2*64*20]; /* Size was "(downSampledSBR)?32:64". We use 64 now. */
+#endif
     int16_t v_index;
 } qmfs_info;
 
@@ -111,7 +119,9 @@ typedef struct
 #ifndef FIXED_POINT
     real_t E_orig[2][64][MAX_L_E];
 #endif
-    real_t E_curr[2][64][MAX_L_E];
+#ifndef FAAD_SBR_LOWMEM
+    real_t E_curr[2][64][MAX_L_E]; /* in sbr_hfadj_info */
+#endif
     int32_t Q[2][64][2];
 #ifndef FIXED_POINT
     real_t Q_div[2][64][2];
@@ -158,9 +168,16 @@ typedef struct
 
     uint8_t id_aac;
     qmfa_info qmfa[2] MEM_ALIGN_ATTR;
+#ifdef FAAD_SBR_LOWMEM
+    qmfs_info *qmfs; /* [2], allocated apart: smaller blocks fit the heaps */
+    /* the QMF matrix of a channel is in sbr_frame_matrix() while it is
+       processed; its last T_HFGEN slots are kept for the next frame */
+    qmf_t Xsbr_prev[2][MAX_NTSRHFG - MAX_NTSR /* T_HFGEN */][64] MEM_ALIGN_ATTR;
+#else
     qmfs_info qmfs[2] MEM_ALIGN_ATTR;
 
     qmf_t Xsbr[2][MAX_NTSRHFG][64] MEM_ALIGN_ATTR;
+#endif
 
 #ifdef DRM
     uint8_t Is_DRM_SBR;
@@ -228,6 +245,11 @@ uint8_t sbrDecodeCoupleFrame(sbr_info *sbr, real_t *left_chan, real_t *right_cha
                              const uint8_t just_seeked, const uint8_t downSampledSBR);
 uint8_t sbrDecodeSingleFrame(sbr_info *sbr, real_t *channel,
                              const uint8_t just_seeked, const uint8_t downSampledSBR);
+#ifdef FAAD_SBR_LOWMEM
+uint8_t sbr_reserve(uint8_t sbr);
+/* syntax.c: the syntax element's memory, free while SBR runs */
+qmf_t (*sbr_frame_matrix(void))[64];
+#endif
 #if (defined(PS_DEC) || defined(DRM_PS))
 uint8_t sbrDecodeSingleFramePS(sbr_info *sbr, real_t *left_channel, real_t *right_channel,
                                const uint8_t just_seeked, const uint8_t downSampledSBR);

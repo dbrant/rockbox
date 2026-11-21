@@ -137,6 +137,15 @@ extern "C" {
 #ifdef CODEC_AAC_SBR_DEC
 #define SBR_DEC
 //#define SBR_LOW_POWER /* Does not work yet in rockbox. */
+/* FAAD_SBR_LOWMEM (set by the target config): SBR in a 124 KiB codec arena
+ * (YP3) plus the playback memory lent while HE-AAC plays. The SBR state is
+ * allocated per HE-AAC track (NeAACDecReserveSBR(), before the demuxer
+ * takes the heap) instead of static; the QMF matrix of the channel being
+ * processed shares the syntax element's memory (unused by then) and only
+ * its last T_HFGEN slots are kept per channel; synthesis reads that matrix
+ * in place (no X_L/X_R); the QMF banks keep single ring buffers; E_curr is
+ * per call. 128 KiB of bss (state, X_L/X_R, 2048-sample outputs) -> 39 KiB
+ * allocated. */
 #endif
 #if CODEC_SIZE >= 0x80000
 #define PS_DEC
@@ -414,6 +423,9 @@ typedef real_t complex_t[2];
 /* common functions */
 uint8_t cpu_has_sse(void);
 uint32_t random_int(void);
+#ifdef YP3_SL6801
+void random_reset(void);
+#endif
 #define wl_min_lzc(x) bs_generic(x, BS_LOG2|BS_0_0)
 #ifdef FIXED_POINT
 #define LOG2_MIN_INF REAL_CONST(-10000)
@@ -429,7 +441,7 @@ uint8_t max_tns_sfb(const uint8_t sr_index, const uint8_t object_type,
 uint32_t get_sample_rate(const uint8_t sr_index);
 int8_t can_decode_ot(const uint8_t object_type);
 
-#ifndef FAAD_STATIC_ALLOC
+#if !defined(FAAD_STATIC_ALLOC) || defined(FAAD_SBR_LOWMEM)
 /* Those should not be defined or used anymore */
 #define faad_malloc(A) malloc(A)
 #define faad_free(A)   free(A)

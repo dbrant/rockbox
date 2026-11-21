@@ -808,7 +808,7 @@ uint8_t reconstruct_single_channel(NeAACDecHandle hDecoder, ic_stream *ics,
                 hDecoder->element_id[ele], ele,
                 2*get_sample_rate(hDecoder->sf_index),
                 hDecoder->downSampledSBR, 0);
-#ifndef FAAD_STATIC_ALLOC
+#if !defined(FAAD_STATIC_ALLOC) || defined(FAAD_SBR_LOWMEM)
             if (hDecoder->sbr[ele] == NULL)
             {
                 /* could not allocate memory */
@@ -1065,7 +1065,7 @@ uint8_t reconstruct_channel_pair(NeAACDecHandle hDecoder, ic_stream *ics1, ic_st
                 hDecoder->element_id[ele], ele, 
                 2*get_sample_rate(hDecoder->sf_index),
                 hDecoder->downSampledSBR, 0);
-#ifndef FAAD_STATIC_ALLOC
+#if !defined(FAAD_STATIC_ALLOC) || defined(FAAD_SBR_LOWMEM)
             if (hDecoder->sbr[ele] == NULL)
             {
                 /* could not allocate memory */

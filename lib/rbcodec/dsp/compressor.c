@@ -631,6 +631,14 @@ static intptr_t compressor_configure(struct dsp_proc_entry *this,
     case DSP_SET_OUT_FREQUENCY:
         compressor_update(dsp, &curr_set);
         break;
+#ifdef YP3_SL6801
+    case DSP_PROC_CLOSE:
+        /* Being disabled: give the 15 KB look-ahead buffer back (as pbe.c
+         * does); it otherwise kept the playback buffer small until a reboot */
+        if (labuf_handle > 0)
+            labuf_handle = core_free(labuf_handle);
+        break;
+#endif
     }
 
     return 0;

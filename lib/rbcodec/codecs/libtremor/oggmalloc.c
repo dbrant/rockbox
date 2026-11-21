@@ -16,6 +16,12 @@ void ogg_malloc_init(void)
     size_t bufsize;
     void* buf = ci->codec_get_buffer(&bufsize);
     init_memory_pool(bufsize, buf);
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+    size_t extra_size;
+    void *extra = ci->codec_get_extra_buffer(&extra_size);
+    if (extra)
+        add_new_area(extra, extra_size, buf);
+#endif
 }
 
 void ogg_malloc_destroy()
@@ -29,8 +35,10 @@ void *ogg_malloc(size_t size)
 {
     void* x = tlsf_malloc(size);
 
-    if (x == NULL)
+    if (x == NULL) {
+        DEBUGF("ogg_malloc %u failed\n", (unsigned)size);
         LONGJMP(1);
+    }
 
     return x;
 }

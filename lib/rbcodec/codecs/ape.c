@@ -39,7 +39,13 @@ CODEC_HEADER
    spare room in the codec buffer - the APE codec itself is small.
 */
 
+#if MEMORYSIZE < 2
+/* 16 KB: about 7.5 hours at the default frame size; a seek beyond the
+   last point is ignored, plain playback is unaffected. */
+#define MAX_SEEKPOINTS      4000
+#else
 #define MAX_SEEKPOINTS      30000
+#endif
 static uint32_t seektablebuf[MAX_SEEKPOINTS];
 
 #define INPUT_CHUNKSIZE     (32*1024)

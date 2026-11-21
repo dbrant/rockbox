@@ -31,6 +31,11 @@
 
 static void wma_lsp_to_curve_init(WMADecodeContext *s, int frame_len);
 
+/* run and level tables of the two coefficient VLCs */
+static uint16_t *runtabarray[2];
+static uint16_t *levtabarray[2];
+
+#ifndef WMA_HEAP_BUFFERS
 /*declarations of statically allocated variables used to remove malloc calls*/
 
 static fixed32 coefsarray[MAX_CHANNELS][BLOCK_MAX_SIZE] IBSS_ATTR MEM_ALIGN_ATTR;
@@ -45,8 +50,6 @@ static fixed32 stat3[ 256] IBSS_ATTR_WMA_XL_IRAM MEM_ALIGN_ATTR;
 static fixed32 stat4[ 128] IBSS_ATTR_WMA_XL_IRAM MEM_ALIGN_ATTR;
 
 /*VLC lookup tables*/
-static uint16_t *runtabarray[2];
-static uint16_t *levtabarray[2];         
 
 static uint16_t runtab_big[1336]   MEM_ALIGN_ATTR;
 static uint16_t runtab_small[1072] MEM_ALIGN_ATTR;
@@ -66,6 +69,133 @@ static VLC_TYPE vlcbuf2[VLCBUF2SIZE][2] MEM_ALIGN_ATTR;
 static VLC_TYPE vlcbuf3[VLCBUF3SIZE][2] MEM_ALIGN_ATTR;
 static VLC_TYPE vlcbuf4[VLCBUF4SIZE][2] MEM_ALIGN_ATTR;
 
+#define wma_init_vlc(vlc, nb_bits, nb_codes, bits, bw, bs, codes, cw, cs) \
+    init_vlc(vlc, nb_bits, nb_codes, bits, bw, bs, codes, cw, cs, \
+             INIT_VLC_USE_NEW_STATIC)
+
+static inline fixed32 wma_noise(WMADecodeContext *s)
+{
+    fixed32 v = s->noise_table[s->noise_index];
+    s->noise_index = (s->noise_index + 1) & (NOISE_TAB_SIZE - 1);
+    return v;
+}
+#endif /* !WMA_HEAP_BUFFERS */
+
+#ifdef WMA_HEAP_BUFFERS
+/* init_vlc_sparse()'s scratch: frame_out while wma_decode_init() runs */
+static void *vlc_init_buf;
+#define wma_init_vlc(vlc, nb_bits, nb_codes, bits, bw, bs, codes, cw, cs) \
+    init_vlc_sparse_buf(vlc, nb_bits, nb_codes, bits, bw, bs, codes, cw, cs, \
+                        NULL, 0, 0, INIT_VLC_USE_NEW_STATIC, vlc_init_buf, \
+                        sizeof(fixed32) * MAX_CHANNELS * BLOCK_MAX_SIZE * 2)
+
+/* VLC table entries of coef_vlcs[], scale_huffcodes and hgain_huffcodes */
+static const uint16_t coef_vlc_size[6] = { 3120, 2838, 4524, 3556, 2548, 2542 };
+#define EXP_VLC_SIZE 352
+#define HGAIN_VLC_SIZE 532
+
+/* A buffer for wma_decode_init(): from the lent block if it fits, else from
+ * the codec heap; NULL if neither has room */
+static void *wma_alloc(WMADecodeContext *s, size_t size)
+{
+    int i;
+    size = (size + 7) & ~7;
+    for (i = 0; i < 2; i++)
+    {
+        if (s->heap_left[i] >= size)
+        {
+            void *p = s->heap[i];
+            s->heap[i] += size;
+            s->heap_left[i] -= size;
+            return p;
+        }
+    }
+    return NULL;
+}
+
+/* The next noise value: ffmpeg's noise table (noisetable_exp in wmadata.h,
+ * 16.16 x16), generated, and restarted where the table wraps */
+static inline fixed32 wma_noise(WMADecodeContext *s)
+{
+    int32_t v = s->noise_seed = s->noise_seed * 314159 + 1;
+    if (++s->noise_index == NOISE_TAB_SIZE)
+    {
+        s->noise_index = 0;
+        s->noise_seed = 1;
+    }
+    return ((int64_t)v * s->noise_scale) >> 31;
+}
+
+/* The IMDCT output of a block, X[0, 2 * bl), held as its middle half
+ * h = X[bl/2, 3bl/2) (ff_imdct_half()): X[j] = -h[bl/2 - 1 - j] below it and
+ * h[5bl/2 - 1 - j] above it. Applies X[j, j + len) to out:
+ *   WIN_ADD   out[i] += X[j + i] * w[i]
+ *   WIN_REV   out[i]  = X[j + i] * w[len - 1 - i]
+ *   WIN_COPY  out[i]  = X[j + i] */
+enum { WIN_ADD, WIN_REV, WIN_COPY };
+static void wma_window_part(fixed32 *out, const fixed32 *h, int bl, int j,
+                            int len, const uint16_t *w, int op)
+{
+    if (op == WIN_REV)
+        w += len - 1;
+    while (len > 0)
+    {
+        const fixed32 *x;
+        int n, step, neg = 0, i;
+        if (j < bl / 2)
+        {
+            n = bl / 2 - j;
+            x = h + bl / 2 - 1 - j;
+            step = -1;
+            neg = 1;
+        }
+        else if (j < 3 * bl / 2)
+        {
+            n = 3 * bl / 2 - j;
+            x = h + j - bl / 2;
+            step = 1;
+        }
+        else
+        {
+            n = len;
+            x = h + 5 * bl / 2 - 1 - j;
+            step = -1;
+        }
+        if (n > len)
+            n = len;
+        switch (op)
+        {
+        case WIN_ADD:
+            if (neg)
+                for (i = 0; i < n; i++, x += step)
+                    *out++ -= ((int64_t)*x * *w++) >> 16;
+            else
+                for (i = 0; i < n; i++, x += step)
+                    *out++ += ((int64_t)*x * *w++) >> 16;
+            break;
+        case WIN_REV:
+            if (neg)
+                for (i = 0; i < n; i++, x += step)
+                    *out++ = -(((int64_t)*x * *w--) >> 16);
+            else
+                for (i = 0; i < n; i++, x += step)
+                    *out++ = ((int64_t)*x * *w--) >> 16;
+            break;
+        default:
+            if (neg)
+                for (i = 0; i < n; i++, x += step)
+                    *out++ = -*x;
+            else
+                for (i = 0; i < n; i++, x += step)
+                    *out++ = *x;
+            break;
+        }
+        j += n;
+        len -= n;
+    }
+}
+#endif /* WMA_HEAP_BUFFERS */
+
 
 
 
@@ -78,6 +208,49 @@ static VLC_TYPE vlcbuf4[VLCBUF4SIZE][2] MEM_ALIGN_ATTR;
   * The Vorbis I spec has a great diagram explaining this process.
   * See section 1.3.2.3 of http://xiph.org/vorbis/doc/Vorbis_I_spec.html
   */
+#ifdef WMA_HEAP_BUFFERS
+/* the same from the IMDCT's middle half (wma_window_part()) */
+static void wma_window(WMADecodeContext *s, const fixed32 *h, fixed32 *out)
+{
+    int bl = s->block_len, wl, n;
+
+    /* left part */
+    if (s->block_len_bits <= s->prev_block_len_bits)
+    {
+        wma_window_part(out, h, bl, 0, bl,
+                        s->windows[s->frame_len_bits - s->block_len_bits],
+                        WIN_ADD);
+    }
+    else
+    {
+        wl = 1 << s->prev_block_len_bits;
+        n = (bl - wl) / 2;
+        wma_window_part(out + n, h, bl, n, wl,
+                        s->windows[s->frame_len_bits - s->prev_block_len_bits],
+                        WIN_ADD);
+        wma_window_part(out + n + wl, h, bl, n + wl, n, NULL, WIN_COPY);
+    }
+
+    /* right part */
+    out += bl;
+    if (s->block_len_bits <= s->next_block_len_bits)
+    {
+        wma_window_part(out, h, bl, bl, bl,
+                        s->windows[s->frame_len_bits - s->block_len_bits],
+                        WIN_REV);
+    }
+    else
+    {
+        wl = 1 << s->next_block_len_bits;
+        n = (bl - wl) / 2;
+        wma_window_part(out, h, bl, bl, n, NULL, WIN_COPY);
+        wma_window_part(out + n, h, bl, bl + n, wl,
+                        s->windows[s->frame_len_bits - s->next_block_len_bits],
+                        WIN_REV);
+        memset(out + n + wl, 0, n * sizeof(fixed32));
+    }
+}
+#else
  static void wma_window(WMADecodeContext *s, fixed32 *in, fixed32 *out)
  {
      //float *in = s->output;
@@ -130,6 +303,7 @@ static VLC_TYPE vlcbuf4[VLCBUF4SIZE][2] MEM_ALIGN_ATTR;
          memset(out+n+block_len, 0, n*sizeof(fixed32));
      }
  }
+#endif /* WMA_HEAP_BUFFERS */
 
 
 
@@ -148,7 +322,7 @@ static void init_coef_vlc(VLC *vlc,
     int i, l, j, level;
 
 
-    init_vlc(vlc, VLCBITS, n, table_bits, 1, 1, table_codes, 4, 4, INIT_VLC_USE_NEW_STATIC);
+    wma_init_vlc(vlc, VLCBITS, n, table_bits, 1, 1, table_codes, 4, 4);
 
     run_table = runtabarray[tab];
     level_table= levtabarray[tab];
@@ -175,7 +349,9 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
 {
     
     int i, flags2;
+#ifndef WMA_HEAP_BUFFERS
     fixed32 *window;
+#endif
     uint8_t *extradata;
     fixed64 bps1;
     fixed32 high_freq;
@@ -197,8 +373,17 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
     s->bit_rate = wfx->bitrate;
     s->block_align = wfx->blockalign;
 
+#ifdef WMA_HEAP_BUFFERS
+    /* frame_out first: it fills the lent block */
+    s->frame_out = wma_alloc(s, sizeof(*s->frame_out));
+    s->coefs = wma_alloc(s, sizeof(*s->coefs));
+    if (!s->frame_out || !s->coefs || s->nb_channels > MAX_CHANNELS)
+        return -1;
+    vlc_init_buf = s->frame_out;
+#else
     s->coefs = &coefsarray;
     s->frame_out = &frame_out_buf;
+#endif
 
     if (wfx->codec_id == ASF_CODEC_ID_WMAV1) {
         s->version = 1;
@@ -452,6 +637,61 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
         }
     }
 
+#ifdef WMA_HEAP_BUFFERS
+    {
+        /* the coefficients' levels share a buffer with the IMDCT output
+           (one channel's block) */
+        size_t levels = s->nb_channels * s->frame_len * sizeof(int16_t);
+        size_t imdct = s->frame_len * sizeof(fixed32);
+        int ch;
+        s->imdct_out = wma_alloc(s, MAX(levels, imdct));
+        if (!s->imdct_out)
+            return -1;
+        for (ch = 0; ch < s->nb_channels; ch++)
+        {
+            s->coefs1[ch] = (int16_t *)s->imdct_out + ch * s->frame_len;
+            s->exponents[ch] = wma_alloc(s, s->frame_len * sizeof(fixed32));
+            if (!s->exponents[ch])
+                return -1;
+        }
+        if (s->use_bit_reservoir)
+        {
+            /* the rest of a superframe and the start of the next one's
+               bits for that frame: up to a superframe (block_align)
+               and 2^byte_offset_bits bytes */
+            s->last_superframe_size = MAX_CODED_SUPERFRAME_SIZE;
+            if (s->block_align > 0 && s->block_align +
+                    (1 << s->byte_offset_bits) < MAX_CODED_SUPERFRAME_SIZE)
+                s->last_superframe_size = s->block_align +
+                                          (1 << s->byte_offset_bits);
+            s->last_superframe = wma_alloc(s, s->last_superframe_size + 4);
+            if (!s->last_superframe)
+                return -1;
+        }
+    }
+
+    /* init MDCT windows : simple sinus window, 0.16 */
+    for(i = 0; i < s->nb_block_sizes; i++)
+    {
+        int n, j;
+        fixed32 alpha;
+        uint16_t *w;
+        n = 1 << (s->frame_len_bits - i);
+        w = wma_alloc(s, n * sizeof(uint16_t));
+        if (!w)
+            return -1;
+
+        alpha = (1<<15)>>(s->frame_len_bits - i+1);
+        for(j=0;j<n;++j)
+        {
+            fixed32 j2 = itofix32(j) + 0x8000;
+            uint32_t v = fsincos(fixmul32(j2,alpha)<<16, 0);
+            v = (v + (1 << 14)) >> 15;
+            w[j] = v > 0xffff ? 0xffff : v;
+        }
+        s->windows[i] = w;
+    }
+#else
     /* ffmpeg uses malloc to only allocate as many window sizes as needed.  
     *  However, we're really only interested in the worst case memory usage.
     *  In the worst case you can have 5 window sizes, 128 doubling up 2048
@@ -484,11 +724,24 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
         s->windows[i] = window;
 
     }
+#endif /* WMA_HEAP_BUFFERS */
 
     s->reset_block_lengths = 1;
 
     if (s->use_noise_coding) /* init the noise generator */
     {
+#ifdef WMA_HEAP_BUFFERS
+        /* LSP values are simply 2x the EXP values */
+        s->noise_mult = s->use_exp_vlc ? 0x51f : 0xa3d;
+        /* sqrt(3) * noise_mult * 16, 16.16, over 2^31 */
+        s->noise_scale = s->use_exp_vlc ? 36323 : 2 * 36323;
+        s->noise_seed = 1;
+        s->noise_index = 0;
+        s->hgain_vlc.table = wma_alloc(s, HGAIN_VLC_SIZE * sizeof(VLC_TYPE) * 2);
+        s->hgain_vlc.table_allocated = HGAIN_VLC_SIZE;
+        if (!s->hgain_vlc.table)
+            return -1;
+#else
         /* LSP values are simply 2x the EXP values */
         if (s->use_exp_vlc)
         {
@@ -530,23 +783,38 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
 
          s->hgain_vlc.table = vlcbuf4;
          s->hgain_vlc.table_allocated = VLCBUF4SIZE;
-         init_vlc(&s->hgain_vlc, HGAINVLCBITS, sizeof(hgain_huffbits),
-                  hgain_huffbits, 1, 1,
-                  hgain_huffcodes, 2, 2, INIT_VLC_USE_NEW_STATIC);
+#endif /* WMA_HEAP_BUFFERS */
+         wma_init_vlc(&s->hgain_vlc, HGAINVLCBITS, sizeof(hgain_huffbits),
+                      hgain_huffbits, 1, 1,
+                      hgain_huffcodes, 2, 2);
     }
 
     if (s->use_exp_vlc)
     {
 
+#ifdef WMA_HEAP_BUFFERS
+        s->exp_vlc.table = wma_alloc(s, EXP_VLC_SIZE * sizeof(VLC_TYPE) * 2);
+        s->exp_vlc.table_allocated = EXP_VLC_SIZE;
+        if (!s->exp_vlc.table)
+            return -1;
+#else
         s->exp_vlc.table = vlcbuf3;
         s->exp_vlc.table_allocated = VLCBUF3SIZE;
+#endif
 
-         init_vlc(&s->exp_vlc, EXPVLCBITS, sizeof(scale_huffbits),
-                  scale_huffbits, 1, 1,
-                  scale_huffcodes, 4, 4, INIT_VLC_USE_NEW_STATIC);
+         wma_init_vlc(&s->exp_vlc, EXPVLCBITS, sizeof(scale_huffbits),
+                      scale_huffbits, 1, 1,
+                      scale_huffcodes, 4, 4);
     }
     else
     {
+#ifdef WMA_HEAP_BUFFERS
+        s->lsp_cos_table = wma_alloc(s, s->frame_len * sizeof(fixed32));
+        s->lsp_pow_m_table1 = wma_alloc(s, 2 * (1 << LSP_POW_BITS) * sizeof(fixed32));
+        s->lsp_pow_m_table2 = (fixed32 *)s->lsp_pow_m_table1 + (1 << LSP_POW_BITS);
+        if (!s->lsp_cos_table || !s->lsp_pow_m_table1)
+            return -1;
+#endif
         wma_lsp_to_curve_init(s, s->frame_len);
     }
 
@@ -562,6 +830,18 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
 
     /* since the coef2 table is the biggest and that has index 2 in coef_vlcs
        it's safe to always assign like this */
+#ifdef WMA_HEAP_BUFFERS
+    for (i = 0; i < 2; i++)
+    {
+        int t = coef_vlc_table * 2 + i;
+        runtabarray[i] = wma_alloc(s, coef_vlcs[t].n * sizeof(uint16_t));
+        levtabarray[i] = wma_alloc(s, coef_vlcs[t].n * sizeof(uint16_t));
+        s->coef_vlc[i].table = wma_alloc(s, coef_vlc_size[t] * sizeof(VLC_TYPE) * 2);
+        s->coef_vlc[i].table_allocated = coef_vlc_size[t];
+        if (!runtabarray[i] || !levtabarray[i] || !s->coef_vlc[i].table)
+            return -1;
+    }
+#else
     runtabarray[0] = runtab_big; runtabarray[1] = runtab_small;
     levtabarray[0] = levtab_big; levtabarray[1] = levtab_small;
 
@@ -569,6 +849,7 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
     s->coef_vlc[0].table_allocated = VLCBUF1SIZE;
     s->coef_vlc[1].table = vlcbuf2;
     s->coef_vlc[1].table_allocated = VLCBUF2SIZE;
+#endif
 
 
     init_coef_vlc(&s->coef_vlc[0], &s->run_table[0], &s->level_table[0],
@@ -579,6 +860,10 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
     s->last_superframe_len = 0;
     s->last_bitoffset = 0;
 
+#ifdef WMA_HEAP_BUFFERS
+    /* frame_out was init_vlc_sparse()'s scratch */
+    memset(s->frame_out, 0, sizeof(*s->frame_out));
+#endif
     return 0;
 }
 
@@ -587,6 +872,31 @@ int wma_decode_init(WMADecodeContext* s, asf_waveformatex_t *wfx)
    interpolation to reduce the mantissa table size at a small speed
    expense (linear interpolation approximately doubles the number of
    bits of precision). */
+#ifdef WMA_NO_SOFT_FLOAT
+/* the bits of (float)x, 0 <= x < 2^31 (round to nearest even) */
+static inline unsigned int float_bits(uint32_t x)
+{
+    unsigned int e, mant, rem, half;
+    if (x == 0)
+        return 0;
+    e = 31 - __builtin_clz(x);
+    if (e <= 23)
+        return ((e + 127) << 23) | ((x << (23 - e)) & 0x7fffff);
+    mant = x >> (e - 23);
+    rem = x & ((1u << (e - 23)) - 1);
+    half = 1u << (e - 24);
+    if (rem > half || (rem == half && (mant & 1)))
+    {
+        if (++mant >> 24)
+        {
+            mant >>= 1;
+            e++;
+        }
+    }
+    return ((e + 127) << 23) | (mant & 0x7fffff);
+}
+#endif
+
 /* x^(-1/4) in 16.16, for x given with frac_bits fractional bits */
 static inline fixed32 pow_m1_4(WMADecodeContext *s, fixed64 x, int frac_bits)
 {
@@ -605,7 +915,11 @@ static inline fixed32 pow_m1_4(WMADecodeContext *s, fixed64 x, int frac_bits)
         x >>= 1;
         shift++;
     }
+#ifdef WMA_NO_SOFT_FLOAT
+    u.v = float_bits((fixed32)x);
+#else
     u.f = (float)(fixed32)x;
+#endif
     if (x != 0)
         u.v += (shift - frac_bits) << 23;
     e = u.v >> 23;
@@ -619,7 +933,13 @@ static inline fixed32 pow_m1_4(WMADecodeContext *s, fixed64 x, int frac_bits)
     /* TODO:  Since we're unlikely have value that cover the whole
      * IEEE754 range, we probably don't need to have all possible exponents */
 
+#ifdef WMA_NO_SOFT_FLOAT
+    /* ftofix32(t.f) */
+    return (lsp_pow_e_table[e] *
+            (a + fixmul32(b, 0x10000 + (((t.v & 0x7fffff) + 64) >> 7))) >> 32);
+#else
     return (lsp_pow_e_table[e] * (a + fixmul32(b, ftofix32(t.f))) >>32);
+#endif
 }
 
 static void wma_lsp_to_curve_init(WMADecodeContext *s, int frame_len)
@@ -641,8 +961,10 @@ static void wma_lsp_to_curve_init(WMADecodeContext *s, int frame_len)
     b = itofix32(1);
     int ix = 0;
 
+#ifndef WMA_HEAP_BUFFERS
     s->lsp_pow_m_table1 = &vlcbuf3[0];
     s->lsp_pow_m_table2 = &vlcbuf3[1<<LSP_POW_BITS];
+#endif
 
     /*double check this later*/
     for(i=(1 << LSP_POW_BITS) - 1;i>=0;i--)
@@ -1173,9 +1495,8 @@ static int wma_decode_block(WMADecodeContext *s)
                 /* very low freqs : noise */
                 for(i = 0;i < s->coefs_start; ++i)
                 {
-                    *coefs++ = fixmul32( (fixmul32(s->noise_table[s->noise_index],
+                    *coefs++ = fixmul32( (fixmul32(wma_noise(s),
                             exponents[i<<bsize>>esize])>>4),(fixed32)(mult1>>16)) >>2;
-                    s->noise_index = (s->noise_index + 1) & (NOISE_TAB_SIZE - 1);
                 }
 
                 n1 = s->exponent_high_sizes[bsize];
@@ -1230,8 +1551,7 @@ static int wma_decode_block(WMADecodeContext *s)
 
                         for(i = 0;i < n; ++i)
                         {
-                            noise = s->noise_table[s->noise_index];
-                            s->noise_index = (s->noise_index + 1) & (NOISE_TAB_SIZE - 1);
+                            noise = wma_noise(s);
                             *coefs++ = fixmul32((fixmul32(exponents[i<<bsize>>esize],noise)>>4),
                                     gain) >>2;
 
@@ -1243,8 +1563,7 @@ static int wma_decode_block(WMADecodeContext *s)
                         /* coded values + small noise */
                         for(i = 0;i < n; ++i)
                         {
-                            noise = s->noise_table[s->noise_index];
-                            s->noise_index = (s->noise_index + 1) & (NOISE_TAB_SIZE - 1);
+                            noise = wma_noise(s);
 
                            /*don't forget to renormalize the noise*/
                            temp1 = (((int32_t)*coefs1++)<<16) + (noise>>4);
@@ -1261,9 +1580,7 @@ static int wma_decode_block(WMADecodeContext *s)
                 for (i = 0; i < n; ++i)
                 {
                     /*renormalize the noise product and then reduce to 14.18 precison*/
-                    *coefs++ = fixmul32(s->noise_table[s->noise_index],mult2) >>6;
-
-                    s->noise_index = (s->noise_index + 1) & (NOISE_TAB_SIZE - 1);
+                    *coefs++ = fixmul32(wma_noise(s),mult2) >>6;
                 }
             }
             else
@@ -1324,16 +1641,27 @@ static int wma_decode_block(WMADecodeContext *s)
     for(ch = 0; ch < s->nb_channels; ++ch)
     { 
         /* BLOCK_MAX_SIZE is 2048 (samples) and MAX_CHANNELS is 2. */
+#ifdef WMA_HEAP_BUFFERS
+        /* only the middle half (wma_window()) */
+        fixed32 *scratch_buf = s->imdct_out;
+#else
         static uint32_t scratch_buf[BLOCK_MAX_SIZE * MAX_CHANNELS] IBSS_ATTR MEM_ALIGN_ATTR;
+#endif
         if (s->channel_coded[ch])
         {
             int n4, index;
 
             n4 = s->block_len >>1;
 
+#ifdef WMA_HEAP_BUFFERS
+            ff_imdct_half((s->frame_len_bits - bsize + 1),
+                          scratch_buf,
+                          (*(s->coefs))[ch]);
+#else
             ff_imdct_calc((s->frame_len_bits - bsize + 1),
                           scratch_buf,
                           (*(s->coefs))[ch]);
+#endif
 
             /* add in the frame */
             index = (s->frame_len / 2) + s->block_pos - n4;
@@ -1450,7 +1778,7 @@ int wma_decode_superframe_frame(WMADecodeContext* s,
         {
             /* add s->bit_offset bits to last frame */
             if ((s->last_superframe_len + ((s->bit_offset + 7) >> 3)) >
-                    MAX_CODED_SUPERFRAME_SIZE)
+                    LAST_SUPERFRAME_SIZE(s))
             {
                 DEBUGF("superframe size too large error\n");
                 goto fail;
@@ -1468,7 +1796,7 @@ int wma_decode_superframe_frame(WMADecodeContext* s,
             }
 
             /* XXX: s->bit_offset bits into last frame */
-            init_get_bits(&s->gb, s->last_superframe, MAX_CODED_SUPERFRAME_SIZE*8);
+            init_get_bits(&s->gb, s->last_superframe, LAST_SUPERFRAME_SIZE(s)*8);
             /* skip unused bits */
             if (s->last_bitoffset > 0)
                 skip_bits(&s->gb, s->last_bitoffset);
@@ -1510,7 +1838,7 @@ int wma_decode_superframe_frame(WMADecodeContext* s,
         s->last_bitoffset = pos & 7;
         pos >>= 3;
         len = buf_size - pos;
-        if (len > MAX_CODED_SUPERFRAME_SIZE || len < 0)
+        if (len > LAST_SUPERFRAME_SIZE(s) || len < 0)
         {
             DEBUGF("superframe size too large error after decoding\n");
             goto fail;

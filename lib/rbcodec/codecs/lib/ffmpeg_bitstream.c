@@ -291,6 +291,31 @@ static int build_table(VLC *vlc, int table_nb_bits, int nb_codes,
    out above (bitswap_32) and an inline asm version in libtremor/codebook.c
    if we ever want this */
    
+#ifdef FFMPEG_VLC_LOWMEM
+static VLCcode vlc_buf[1336+1]; /* worst case is wma, which has one table with 1336 entries */
+
+int init_vlc_sparse(VLC *vlc, int nb_bits, int nb_codes,
+             const void *bits, int bits_wrap, int bits_size,
+             const void *codes, int codes_wrap, int codes_size,
+             const void *symbols, int symbols_wrap, int symbols_size,
+             int flags)
+{
+    return init_vlc_sparse_buf(vlc, nb_bits, nb_codes, bits, bits_wrap,
+                               bits_size, codes, codes_wrap, codes_size,
+                               symbols, symbols_wrap, symbols_size, flags,
+                               vlc_buf, sizeof(vlc_buf));
+}
+
+int init_vlc_sparse_buf(VLC *vlc, int nb_bits, int nb_codes,
+             const void *bits, int bits_wrap, int bits_size,
+             const void *codes, int codes_wrap, int codes_size,
+             const void *symbols, int symbols_wrap, int symbols_size,
+             int flags, void *buf_arg, size_t buf_size)
+{
+    (void)sizeof(char[INIT_VLC_BUF_SIZE(0) == sizeof(VLCcode) ? 1 : -1]);
+    VLCcode *buf = buf_arg;
+    if (nb_codes+1 > (int)(buf_size / sizeof (VLCcode)))
+#else
 static VLCcode buf[1336+1]; /* worst case is wma, which has one table with 1336 entries */
 
 int init_vlc_sparse(VLC *vlc, int nb_bits, int nb_codes,
@@ -300,6 +325,7 @@ int init_vlc_sparse(VLC *vlc, int nb_bits, int nb_codes,
              int flags)
 {
     if (nb_codes+1 > (int)(sizeof (buf)/ sizeof (VLCcode)))
+#endif
     {
         DEBUGF("Table is larger than temp buffer!\n");
         return -1;

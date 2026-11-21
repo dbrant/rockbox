@@ -73,6 +73,48 @@ void sbr_qmf_analysis_32(sbr_info *sbr, qmfa_info *qmfa, const real_t *input,
         /* input buffer is not shifted anymore, x is implemented as double ringbuffer */
         //memmove(qmfa->x + 32, qmfa->x, (320-32)*sizeof(real_t));
 
+#ifdef FAAD_SBR_LOWMEM
+        /* x is a single ring buffer of 320: each tap reads 32 consecutive
+           samples at a multiple of 32, which never wrap */
+        (void)idx1;
+        idx0 = qmfa->x_index + 31;
+        for (n = 0; n < 32; n+=4)
+        {
+            qmfa->x[idx0--] = (input[in++]);
+            qmfa->x[idx0--] = (input[in++]);
+            qmfa->x[idx0--] = (input[in++]);
+            qmfa->x[idx0--] = (input[in++]);
+        }
+        {
+            const real_t *t[10];
+            const real_t *c;
+
+            for (n = 0; n < 10; n++)
+            {
+                /* taps 0, 64, ..., 256 of u[0..31], then of u[32..63] */
+                idx0 = qmfa->x_index + (n % 5) * 64 + (n / 5) * 32;
+                t[n] = qmfa->x + (idx0 < 320 ? idx0 : idx0 - 320);
+            }
+            for (n = 0, c = qmf_c; n < 32; n++, c += 20)
+            {
+                u[n] = FAAD_ANALYSIS_SCALE1(
+                       MUL_F(t[0][n], c[0]) +
+                       MUL_F(t[1][n], c[2]) +
+                       MUL_F(t[2][n], c[4]) +
+                       MUL_F(t[3][n], c[6]) +
+                       MUL_F(t[4][n], c[8]));
+            }
+            for (n = 0, c = qmf_c + 32 * 20 - 639; n < 32; n++, c += 20)
+            {
+                u[n + 32] = FAAD_ANALYSIS_SCALE1(
+                       MUL_F(t[5][n], c[0]) +
+                       MUL_F(t[6][n], c[2]) +
+                       MUL_F(t[7][n], c[4]) +
+                       MUL_F(t[8][n], c[6]) +
+                       MUL_F(t[9][n], c[8]));
+            }
+        }
+#else
         /* add new samples to input buffer x */
         idx0 = qmfa->x_index + 31; idx1 = idx0 + 320;
         for (n = 0; n < 32; n+=4)
@@ -104,6 +146,7 @@ void sbr_qmf_analysis_32(sbr_info *sbr, qmfa_info *qmfa, const real_t *input,
                    MUL_F(qmfa->x[idx0 + 192], qmf_c[idx1 + 6]) +
                    MUL_F(qmfa->x[idx0 + 256], qmf_c[idx1 + 8]));
         }
+#endif
 
         /* update ringbuffer index */
         qmfa->x_index -= 32;
@@ -445,6 +488,57 @@ void sbr_qmf_synthesis_64(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSR][64],
         dct4_kernel(real2, imag2);
 
         p_buf_1 = qmfs->v + qmfs->v_index;
+#ifdef FAAD_SBR_LOWMEM
+        (void)p_buf_3;
+        idx0 = 0; idx1 = 127;
+        for (n = 0; n < 32; n++)
+        {
+            p_buf_1[idx0] = real2[   n] - real1[   n]; idx0++;
+            p_buf_1[idx1] = real2[   n] + real1[   n]; idx1--;
+            p_buf_1[idx0] = imag2[31-n] + imag1[31-n]; idx0++;
+            p_buf_1[idx1] = imag2[31-n] - imag1[31-n]; idx1--;
+        }
+
+        /* v is a single ring buffer of 1280: each of the 10 taps reads 64
+           consecutive samples at a multiple of 64, which never wrap */
+        {
+            static const uint16_t tap[10] = {
+                0, 192, 256, 448, 512, 704, 768, 960, 1024, 1216 };
+            const real_t *t[10];
+            const real_t *qtab = qmf_c;
+
+            for (n = 0; n < 10; n++)
+            {
+                idx0 = qmfs->v_index + tap[n];
+                t[n] = qmfs->v + (idx0 < 1280 ? idx0 : idx0 - 1280);
+            }
+            for (k = 0; k < 64; k++, qtab += 10)
+            {
+#if defined(CPU_ARM_CLASSIC) || (defined(CPU_ARM_MICRO) && __GNUC__ > 4)
+                /* the 64-bit sum's high word, as the assembly below */
+                int64_t acc =
+                    (int64_t)t[0][k] * qtab[0] + (int64_t)t[1][k] * qtab[1] +
+                    (int64_t)t[2][k] * qtab[2] + (int64_t)t[3][k] * qtab[3] +
+                    (int64_t)t[4][k] * qtab[4] + (int64_t)t[5][k] * qtab[5] +
+                    (int64_t)t[6][k] * qtab[6] + (int64_t)t[7][k] * qtab[7] +
+                    (int64_t)t[8][k] * qtab[8] + (int64_t)t[9][k] * qtab[9];
+                output[out++] = (real_t)(acc >> 32);
+#else
+                output[out++] = FAAD_SYNTHESIS_SCALE(
+                                MUL_F(t[0][k], qtab[0]) +
+                                MUL_F(t[1][k], qtab[1]) +
+                                MUL_F(t[2][k], qtab[2]) +
+                                MUL_F(t[3][k], qtab[3]) +
+                                MUL_F(t[4][k], qtab[4]) +
+                                MUL_F(t[5][k], qtab[5]) +
+                                MUL_F(t[6][k], qtab[6]) +
+                                MUL_F(t[7][k], qtab[7]) +
+                                MUL_F(t[8][k], qtab[8]) +
+                                MUL_F(t[9][k], qtab[9]));
+#endif
+            }
+        }
+#else /* !FAAD_SBR_LOWMEM */
         p_buf_3 = p_buf_1 + 1280;
 
         idx0 = 0; idx1 = 127;
@@ -549,6 +643,8 @@ void sbr_qmf_synthesis_64(sbr_info *sbr, qmfs_info *qmfs, qmf_t X[MAX_NTSR][64],
                             MUL_F(p_buf_1[k+1024+192], qmf_c[idx0+9]));
         }
 #endif
+
+#endif /* FAAD_SBR_LOWMEM */
 
         /* update ringbuffer index */
         qmfs->v_index -= 128;

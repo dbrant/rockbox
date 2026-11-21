@@ -80,7 +80,7 @@ static FORCE_INLINE int sample_input_setup(struct sample_io_data *this,
 }
 
 /* convert count 16-bit mono to 32-bit mono */
-static void sample_input_mono16(struct sample_io_data *this,
+static void ICODE_ATTR sample_input_mono16(struct sample_io_data *this,
                                 struct dsp_buffer **buf_p)
 {
     struct dsp_buffer *src, *dst;
@@ -103,7 +103,7 @@ static void sample_input_mono16(struct sample_io_data *this,
 }
 
 /* convert count 16-bit interleaved stereo to 32-bit noninterleaved */
-static void sample_input_i_stereo16(struct sample_io_data *this,
+static void ICODE_ATTR sample_input_i_stereo16(struct sample_io_data *this,
                                     struct dsp_buffer **buf_p)
 {
     struct dsp_buffer *src, *dst;
@@ -128,7 +128,7 @@ static void sample_input_i_stereo16(struct sample_io_data *this,
 }
 
 /* convert count 16-bit noninterleaved stereo to 32-bit noninterleaved */
-static void sample_input_ni_stereo16(struct sample_io_data *this,
+static void ICODE_ATTR sample_input_ni_stereo16(struct sample_io_data *this,
                                      struct dsp_buffer **buf_p)
 {
     struct dsp_buffer *src, *dst;
@@ -154,7 +154,7 @@ static void sample_input_ni_stereo16(struct sample_io_data *this,
 }
 
 /* convert count 32-bit mono to 32-bit mono */
-static void sample_input_mono32(struct sample_io_data *this,
+static void ICODE_ATTR sample_input_mono32(struct sample_io_data *this,
                                 struct dsp_buffer **buf_p)
 {
     struct dsp_buffer *dst = &this->sample_buf;
@@ -172,7 +172,7 @@ static void sample_input_mono32(struct sample_io_data *this,
 
 
 /* convert count 32-bit interleaved stereo to 32-bit noninterleaved stereo */
-static void sample_input_i_stereo32(struct sample_io_data *this,
+static void ICODE_ATTR sample_input_i_stereo32(struct sample_io_data *this,
                                     struct dsp_buffer **buf_p)
 {
     struct dsp_buffer *src, *dst;
@@ -196,7 +196,7 @@ static void sample_input_i_stereo32(struct sample_io_data *this,
 }
 
 /* convert 32 bit-noninterleaved stereo to 32-bit noninterleaved stereo */
-static void sample_input_ni_stereo32(struct sample_io_data *this,
+static void ICODE_ATTR sample_input_ni_stereo32(struct sample_io_data *this,
                                      struct dsp_buffer **buf_p)
 {
     struct dsp_buffer *dst = &this->sample_buf;

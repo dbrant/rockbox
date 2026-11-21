@@ -46,7 +46,7 @@
 #include <limits.h>
 
 #ifdef CODEC
-#if defined(DEBUG) || defined(SIMULATOR)
+#if defined(DEBUG) || defined(SIMULATOR) || defined(HAVE_DEVLOG)
 #undef DEBUGF
 #define DEBUGF  ci->debugf
 #undef LDEBUGF
@@ -57,7 +57,12 @@
 #endif
 
 #undef LOGF
-#if defined(LOGF_ENABLE)
+#if defined(HAVE_DEVLOG) /* codec errors go to the dev log */
+#define LOGF DEBUGF
+#ifndef LOGF_ENABLE
+#define LOGF_ENABLE /* codecs keep their LOGF-only counters */
+#endif
+#elif defined(LOGF_ENABLE)
 #if defined(ROCKBOX_HAS_LOGF)
 #define LOGF ci->logf
 #else
@@ -73,13 +78,21 @@
 #define CODEC_MAGIC 0x52434F44 /* RCOD */
 /* magic for encoder codecs */
 #define CODEC_ENC_MAGIC 0x52454E43 /* RENC */
+#ifdef HAVE_XIP_CODECS
+/* magic for decoders run from flash; their file holds only the header */
+#define CODEC_XIP_MAGIC 0x52435850 /* RCXP */
+#endif
 
 /*
  * Increment this whenever a change breaks the codec ABI,
  * when this happens please take the opportunity to sort in
  * any new functions "waiting" at the end of the list.
  */
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+#define CODEC_API_VERSION 51 /* codec_get_extra_buffer */
+#else
 #define CODEC_API_VERSION 50
+#endif
 
 /* reasons for calling codec main entrypoint */
 enum codec_entry_call_reason {
@@ -189,7 +202,7 @@ struct codec_api {
     int (*memcmp)(const void *s1, const void *s2, size_t n);
     void *(*memchr)(const void *s1, int c, size_t n);
 
-#if defined(DEBUG) || defined(SIMULATOR)
+#if defined(DEBUG) || defined(SIMULATOR) || defined(HAVE_DEVLOG)
     void (*debugf)(const char *fmt, ...) ATTRIBUTE_PRINTF(1, 2);
 #endif
 #ifdef ROCKBOX_HAS_LOGF
@@ -224,6 +237,11 @@ struct codec_api {
     /* new stuff at the end, sort into place next time
        the API gets incompatible */
     void (*panicf)(const char *msg, ...);
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+    /* Playback memory lent to a heap-hungry codec while it plays, a second
+       heap besides codec_get_buffer()'s; NULL when there is none */
+    void *(*codec_get_extra_buffer)(size_t *size);
+#endif
 };
 
 /* codec header */
@@ -236,24 +254,62 @@ struct codec_header {
     void * rec_extension[]; /* extension for encoders */
 };
 
+#ifdef HAVE_XIP_CODECS
+/* XIP decoder (codec-xip.lds): the image starts with this header in flash.
+ * lc_hdr.load_addr..end_addr is the arena part: the RAM image (data, hot
+ * code and tables) loaded from data_load, then bss. */
+struct codec_xip_header {
+    struct codec_header hdr;            /* lc_hdr.magic = CODEC_XIP_MAGIC */
+    const unsigned char *flash_start;   /* this header */
+    const unsigned char *flash_end;
+    const unsigned char *data_load;     /* RAM image in flash */
+    unsigned char *data_end;            /* RAM image end in the arena */
+};
+
+/* The codec flash area ends in a directory of the codecs packed into it
+ * (xip-codec.py pack); the loader takes these from flash, no file needed */
+#define CODEC_XIP_DIR_MAGIC 0x44435850  /* PXCD */
+#define CODEC_XIP_DIR_SIZE  0x100
+struct codec_xip_dir {
+    uint32_t magic;
+    uint32_t count;
+    struct {
+        char name[12];                  /* root name, as get_codec_filename() */
+        const struct codec_xip_header *hdr;
+    } entry[];
+};
+#endif
+
 #ifdef CODEC
 #if (CONFIG_PLATFORM & PLATFORM_NATIVE)
 /* plugin_* is correct, codecs use the plugin linker script */
 extern unsigned char plugin_start_addr[];
 extern unsigned char plugin_end_addr[];
 /* decoders */
+#ifdef CODEC_XIP
+extern const unsigned char xip_flash_start[], xip_flash_end[], xip_data_load[];
+extern unsigned char xip_data_end[];
+#define CODEC_HEADER \
+        const struct codec_xip_header __header \
+        __attribute__ ((section (".header")))= { \
+        { { CODEC_XIP_MAGIC, TARGET_ID, CODEC_API_VERSION, \
+            plugin_start_addr, plugin_end_addr LC_HEADER_BUILD_ID }, \
+          codec_start, codec_run, &ci, sizeof(struct codec_api) }, \
+        xip_flash_start, xip_flash_end, xip_data_load, xip_data_end };
+#else
 #define CODEC_HEADER \
         const struct codec_header __header \
         __attribute__ ((section (".header")))= { \
         { CODEC_MAGIC, TARGET_ID, CODEC_API_VERSION, \
-          plugin_start_addr, plugin_end_addr }, \
+          plugin_start_addr, plugin_end_addr LC_HEADER_BUILD_ID }, \
         codec_start, codec_run, &ci, sizeof(struct codec_api) };
+#endif /* CODEC_XIP */
 /* encoders */
 #define CODEC_ENC_HEADER \
         const struct codec_header __header \
         __attribute__ ((section (".header")))= { \
         { CODEC_ENC_MAGIC, TARGET_ID, CODEC_API_VERSION, \
-          plugin_start_addr, plugin_end_addr }, \
+          plugin_start_addr, plugin_end_addr LC_HEADER_BUILD_ID }, \
         codec_start, codec_run, &ci, sizeof(struct codec_api), \
         { enc_callback } };
 
@@ -286,6 +342,9 @@ void *codec_get_buffer_callback(size_t *size);
 int codec_load_buf(int hid, struct codec_api *api);
 #endif /* HAVE_CODEC_BUFFERING */
 int codec_load_file(const char* codec, struct codec_api *api);
+#ifdef HAVE_XIP_CODECS
+bool codec_in_flash(const char *codec);
+#endif
 int codec_run_proc(void);
 int codec_close(void);
 #if defined(HAVE_RECORDING)

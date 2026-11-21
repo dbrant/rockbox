@@ -45,8 +45,8 @@ void sample_output_dithered(struct sample_io_data *this,
 
 #if !defined(CPU_COLDFIRE) && !defined(CPU_ARM)
 /* write mono internal format to output format */
-void sample_output_mono(struct sample_io_data *this,
-                        struct dsp_buffer *src, struct dsp_buffer *dst)
+void ICODE_ATTR sample_output_mono(struct sample_io_data *this,
+                                   struct dsp_buffer *src, struct dsp_buffer *dst)
 {
     int count = this->outcount;
     const int32_t *s0 = src->p32[0];
@@ -66,8 +66,8 @@ void sample_output_mono(struct sample_io_data *this,
 
 #if (!defined(CPU_COLDFIRE) && !defined(CPU_ARM)) || defined(CPU_ARM_MICRO)
 /* write stereo internal format to output format */
-void sample_output_stereo(struct sample_io_data *this,
-                          struct dsp_buffer *src, struct dsp_buffer *dst)
+void ICODE_ATTR sample_output_stereo(struct sample_io_data *this,
+                                     struct dsp_buffer *src, struct dsp_buffer *dst)
 {
     int count = this->outcount;
     const int32_t *s0 = src->p32[0];

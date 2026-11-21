@@ -42,7 +42,18 @@ extern char *global_stack;
 
 /* Room for 120 ms of stereo audio at 48 kHz */
 #define MAX_FRAME_SIZE  (2*120*48)
+#ifdef OPUS_LOWMEM
+/* 60 ms, the longest frame opusenc writes (120 ms packets fail to decode) */
+#define OUTPUT_SAMPLES  (2*60*48)
+#else
+#define OUTPUT_SAMPLES  MAX_FRAME_SIZE
+#endif
+#ifdef OPUS_LOWMEM
+/* the sync buffer grows to what is unread plus one read: keep both small */
+#define CHUNKSIZE       (4*1024)
+#else
 #define CHUNKSIZE       (16*1024)
+#endif
 #define SEEK_CHUNKSIZE 7*CHUNKSIZE
 
 static int get_more_data(ogg_sync_state *oy)
@@ -393,11 +404,26 @@ enum codec_status codec_run(void)
 
     /* pre-init the ogg_sync_state buffer, so it won't need many reallocs */
     ogg_sync_init(oy);
+#ifdef OPUS_LOWMEM
+    /* Sized once, with the stream body (libopus/ogg/framing.c), for the
+     * largest page the heap allows: growing them page by page fragmented
+     * it until a bigger page no longer fit. With playback
+     * memory lent (HAVE_CODEC_EXTRA_BUFFER) pages up to 30 KB (1 s pages
+     * up to ~192 kbit/s; the body alone fills the lent block, which is not
+     * contiguous with the arena), else ~20 KB (~128 kbit/s). */
+    size_t extra_size = 0;
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+    ci->codec_get_extra_buffer(&extra_size);
+#endif
+    oy->storage = extra_size ? 36*1024 : 24*1024;
+    ogg_stream_body_init = extra_size ? 30*1024 : 20*1024;
+#else
     oy->storage = 64*1024;
+#endif
     oy->data = _ogg_malloc(oy->storage);
 
     /* allocate output buffer */
-    uint16_t *output = (uint16_t*) _ogg_malloc(MAX_FRAME_SIZE*sizeof(uint16_t));
+    uint16_t *output = (uint16_t*) _ogg_malloc(OUTPUT_SAMPLES*sizeof(uint16_t));
 
     ci->seek_buffer(0);
     ci->set_elapsed(0);
@@ -451,7 +477,19 @@ enum codec_status codec_run(void)
             page_granule = ogg_page_granulepos(&og);
             granule_pos = page_granule;
 
+#ifdef YP3_SL6801
+            /* After the seek past the tag pages (or any seek) the first
+             * packetout reports the gap; stopping there left the page's
+             * packets in the stream body and the next page was added on
+             * top, so the body had to hold two pages */
+            int pr;
+            while ((pr = ogg_stream_packetout(os, &op)) != 0 &&
+                   !(pr == 1 && op.e_o_s)) {
+                if (pr < 0)
+                    continue;
+#else
             while ((ogg_stream_packetout(os, &op) == 1) && !op.e_o_s) {
+#endif
                 if (op.packetno == 0){
                     /* identification header */
 
@@ -502,7 +540,8 @@ enum codec_status codec_run(void)
                     ci->set_elapsed((granule_pos - header->preskip) / 48);
 
                     /* Decode audio packets */
-                    ret = opus_decode(st, op.packet, op.bytes, output, MAX_FRAME_SIZE, 0);
+                    ret = opus_decode(st, op.packet, op.bytes, output,
+                                      OUTPUT_SAMPLES / header->channels, 0);
 
                     if (ret > skip) {
                         /* part of or entire output buffer is played */

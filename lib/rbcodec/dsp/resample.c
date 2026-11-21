@@ -97,8 +97,8 @@ static bool resample_new_delta(struct resample_data *data,
 }
 
 #if (!defined(CPU_COLDFIRE) && !defined(CPU_ARM)) || defined(CPU_ARM_MICRO)
-int resample_hermite(struct resample_data *data, struct dsp_buffer *src,
-                     struct dsp_buffer *dst)
+int ICODE_ATTR resample_hermite(struct resample_data *data,
+                                struct dsp_buffer *src, struct dsp_buffer *dst)
 {
     int ch = src->format.num_channels - 1;
     uint32_t count = MIN(src->remcount, 0x8000);

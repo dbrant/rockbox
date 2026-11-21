@@ -75,6 +75,14 @@ restart_track:
     memcpy(&wfx, ci->id3->toc, sizeof(wfx));
 
     ci->seek_buffer(ci->id3->first_frame_offset);
+#ifdef WMA_HEAP_BUFFERS
+    /* the buffers: playback memory lent while WMA plays, then the codec
+       heap (the arena past the codec's image) */
+    wmadec.heap[1] = ci->codec_get_buffer(&wmadec.heap_left[1]);
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+    wmadec.heap[0] = ci->codec_get_extra_buffer(&wmadec.heap_left[0]);
+#endif
+#endif
     if (wma_decode_init(&wmadec,&wfx) < 0) {
         LOGF("WMA: Unsupported or corrupt file\n");
         return CODEC_ERROR;

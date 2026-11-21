@@ -57,7 +57,34 @@ static NeAACDecStruct s_AACDec;
 static real_t s_fb_intermed  [MAX_CHANNELS][1*FRAME_LEN] IBSS_ATTR_FAAD_LARGE_IRAM MEM_ALIGN_ATTR;
 static real_t s_time_buf_1024[MAX_CHANNELS][1*FRAME_LEN] IBSS_ATTR_FAAD_LARGE_IRAM MEM_ALIGN_ATTR;
 #ifdef SBR_DEC
-#ifdef FAAD_STATIC_ALLOC
+#if defined(FAAD_SBR_LOWMEM)
+/* SBR output: channel 0 in s_time_buf_1024 (both halves), channel 1 in
+ * memory reserved for the track (or allocated when SBR turns up) */
+static real_t *s_time_buf_sbr;
+
+static real_t *sbr_time_buf(uint8_t ch)
+{
+    real_t *buf = s_time_buf_sbr;
+
+    if (ch == 0)
+        return s_time_buf_1024[0];
+    s_time_buf_sbr = NULL;
+    return buf ? buf : (real_t*)faad_malloc(2*FRAME_LEN*sizeof(real_t));
+}
+
+/* HE-AAC: take SBR's memory at the start of the track, before the demuxer
+ * takes the heap for its optional tables (the codec heap is reset per
+ * track). Nonzero if it does not fit. */
+uint8_t NEAACDECAPI NeAACDecReserveSBR(uint8_t sbr)
+{
+    s_time_buf_sbr = NULL;
+    if (sbr_reserve(sbr))
+        return 1;
+    if (sbr)
+        s_time_buf_sbr = (real_t*)faad_malloc(2*FRAME_LEN*sizeof(real_t));
+    return sbr && s_time_buf_sbr == NULL;
+}
+#elif defined(FAAD_STATIC_ALLOC)
 static real_t s_time_buf_2048[MAX_CHANNELS][2*FRAME_LEN] MEM_ALIGN_ATTR;
 #endif
 #endif
@@ -129,6 +156,9 @@ NeAACDecHandle NEAACDECAPI NeAACDecOpen(void)
 
     memset(hDecoder     , 0, sizeof(NeAACDecStruct));
     memset(s_fb_intermed, 0, sizeof(s_fb_intermed));
+#ifdef YP3_SL6801
+    random_reset();
+#endif
 #ifdef SSR_DEC
     memset(s_ssr_overlap, 0, sizeof(s_ssr_overlap));
     memset(s_prev_fmd   , 0, sizeof(s_prev_fmd));
@@ -342,7 +372,11 @@ int32_t NEAACDECAPI NeAACDecInit(NeAACDecHandle hDecoder, uint8_t *buffer,
         hDecoder->sbr_alloced[hDecoder->fr_ch_ele] = 0;
         if ((hDecoder->sbr_present_flag == 1) || (hDecoder->forceUpSampling == 1))
         {
-#ifdef FAAD_STATIC_ALLOC
+#if defined(FAAD_SBR_LOWMEM)
+            hDecoder->time_out[i] = sbr_time_buf(i);
+            if (hDecoder->time_out[i] == NULL)
+                return -1;
+#elif defined(FAAD_STATIC_ALLOC)
             hDecoder->time_out[i] = s_time_buf_2048[i];
 #else
             hDecoder->time_out[i] = (real_t*)faad_malloc(2*FRAME_LEN*sizeof(real_t));
@@ -470,7 +504,11 @@ int8_t NEAACDECAPI NeAACDecInit2(NeAACDecHandle hDecoder, uint8_t *pBuffer,
         hDecoder->sbr_alloced[hDecoder->fr_ch_ele] = 0;
         if ((hDecoder->sbr_present_flag == 1) || (hDecoder->forceUpSampling == 1))
         {
-#ifdef FAAD_STATIC_ALLOC
+#if defined(FAAD_SBR_LOWMEM)
+            hDecoder->time_out[i] = sbr_time_buf(i);
+            if (hDecoder->time_out[i] == NULL)
+                return -1;
+#elif defined(FAAD_STATIC_ALLOC)
             hDecoder->time_out[i] = s_time_buf_2048[i];
 #else
             hDecoder->time_out[i] = (real_t*)faad_malloc(2*FRAME_LEN*sizeof(real_t));

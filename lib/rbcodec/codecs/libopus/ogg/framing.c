@@ -126,15 +126,52 @@ static void _ogg_crc_init(){
 }
 #endif
 
-#include "crctable.h"
+#ifdef OPUS_LOWMEM
+/* Byte-wise CRC from a 1 KB table built at first use, both in the arena:
+ * the slice-by-8 table (8 KB) is too big for it, and read from flash for
+ * every byte it held the codec for longer than the PCM ring per 25 KB page
+ * (underruns at 128-192 kbit/s). */
+static ogg_uint32_t crc_lookup[256] IBSS_ATTR;
 
+static void ICODE_ATTR crc_init(void)
+{
+  for (ogg_uint32_t i = 0; i < 256; i++){
+    ogg_uint32_t r = i << 24;
+    for (int j = 0; j < 8; j++)
+      r = (r & 0x80000000u) ? (r << 1) ^ 0x04c11db7u : r << 1;
+    crc_lookup[i] = r;
+  }
+}
+
+static ogg_uint32_t ICODE_ATTR _os_update_crc(ogg_uint32_t crc,
+                                              unsigned char *buffer, int size){
+  if (!crc_lookup[1])
+    crc_init();
+  while (size--)
+    crc=(crc<<8)^crc_lookup[((crc >> 24)&0xff)^*buffer++];
+  return crc;
+}
+#else
+#include "crctable.h"
+#endif
+
+#ifdef OPUS_LOWMEM
+long ogg_stream_body_init = 20*1024;
+#endif
 /* init the encode/decode logical stream state */
 
 int ogg_stream_init(ogg_stream_state *os,int serialno){
   if(os){
     memset(os,0,sizeof(*os));
+#ifdef OPUS_LOWMEM
+    /* one page without growing (opus.c sets the size); lacing grows on
+     * demand for pages of many segments */
+    os->body_storage=ogg_stream_body_init;
+    os->lacing_storage=256;
+#else
     os->body_storage=16*1024;
     os->lacing_storage=1024;
+#endif
 
     os->body_data=_ogg_malloc(os->body_storage*sizeof(*os->body_data));
     os->lacing_vals=_ogg_malloc(os->lacing_storage*sizeof(*os->lacing_vals));
@@ -234,6 +271,7 @@ static int _os_lacing_expand(ogg_stream_state *os,long needed){
 /* Direct table CRC; note that this will be faster in the future if we
    perform the checksum simultaneously with other copies */
 
+#ifndef OPUS_LOWMEM
 static ogg_uint32_t _os_update_crc(ogg_uint32_t crc, unsigned char *buffer, int size){
   #define u32(v) (uint32_t)v
   while (size>=8){
@@ -252,6 +290,7 @@ static ogg_uint32_t _os_update_crc(ogg_uint32_t crc, unsigned char *buffer, int 
     crc=(crc<<8)^crc_lookup[0][((crc >> 24)&0xff)^*buffer++];
   return crc;
 }
+#endif
 
 void ogg_page_checksum_set(ogg_page *og){
   if(og){

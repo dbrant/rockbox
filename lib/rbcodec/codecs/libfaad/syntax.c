@@ -557,8 +557,32 @@ void raw_data_block(NeAACDecHandle hDecoder, NeAACDecFrameInfo *hInfo,
 
 /* Table 4.4.4 and */
 /* Table 4.4.9 */
+static int16_t spec_data1[FRAME_LEN] IBSS_ATTR MEM_ALIGN_ATTR;
+#ifdef CODEC_XIP
+/* XIP codecs: channel_pair_element()'s first buffer, like sce and cpe
+ * below (each is cleared on entry and used only within its call; saves
+ * 2 KB) */
+#define spec_data spec_data1
+#else
 static int16_t spec_data[FRAME_LEN] MEM_ALIGN_ATTR = {0};
+#endif
+#ifdef FAAD_SBR_LOWMEM
+/* SBR runs at the end of an element's reconstruction, when the element is
+ * no longer used: the QMF matrix of the channel it processes shares its
+ * memory */
+static union {
+    element sce;
+    qmf_t Xsbr[MAX_NTSRHFG][64];
+} sce_sbr MEM_ALIGN_ATTR;
+#define sce (sce_sbr.sce)
+
+qmf_t (*sbr_frame_matrix(void))[64]
+{
+    return sce_sbr.Xsbr;
+}
+#else
 static element sce;
+#endif
 static uint8_t single_lfe_channel_element(NeAACDecHandle hDecoder, bitfile *ld,
                                           uint8_t channel, uint8_t *tag)
 {
@@ -600,12 +624,18 @@ static uint8_t single_lfe_channel_element(NeAACDecHandle hDecoder, bitfile *ld,
 
     return 0;
 }
+#undef spec_data
 
 /* Table 4.4.5 */
 
-static int16_t spec_data1[FRAME_LEN] IBSS_ATTR MEM_ALIGN_ATTR;
 static int16_t spec_data2[FRAME_LEN] IBSS_ATTR MEM_ALIGN_ATTR;
+#ifdef CODEC_XIP
+/* XIP codecs (HAVE_XIP_CODECS) run in a small arena: share sce, which is also
+ * cleared on entry and used only within the call (saves 20 KB). */
+#define cpe sce
+#else
 static element cpe;
+#endif
 static uint8_t channel_pair_element(NeAACDecHandle hDecoder, bitfile *ld,
                                     uint8_t channels, uint8_t *tag)
 {
@@ -729,6 +759,7 @@ static uint8_t channel_pair_element(NeAACDecHandle hDecoder, bitfile *ld,
 
     return 0;
 }
+#undef cpe
 
 /* Table 4.4.6 */
 static uint8_t ics_info(NeAACDecHandle hDecoder, ic_stream *ics, bitfile *ld,
@@ -1031,7 +1062,7 @@ static uint8_t fill_element(NeAACDecHandle hDecoder, bitfile *ld, drc_info *drc
                     hDecoder->element_id[sbr_ele], sbr_ele, 
                     2*get_sample_rate(hDecoder->sf_index),
                     hDecoder->downSampledSBR, 0);
-#ifndef FAAD_STATIC_ALLOC
+#if !defined(FAAD_STATIC_ALLOC) || defined(FAAD_SBR_LOWMEM)
                 if (hDecoder->sbr[sbr_ele] == NULL)
                 {
                     /* could not allocate memory */
@@ -1251,7 +1282,7 @@ void aac_scalable_main_element(NeAACDecHandle hDecoder, NeAACDecFrameInfo *hInfo
         {
             hDecoder->sbr[0] = sbrDecodeInit(hDecoder->frameLength, hDecoder->element_id[0],
                 2*get_sample_rate(hDecoder->sf_index), 0 /* ds SBR */, 1);
-#ifndef FAAD_STATIC_ALLOC
+#if !defined(FAAD_STATIC_ALLOC) || defined(FAAD_SBR_LOWMEM)
             if (hDecoder->sbr[0] == NULL)
             {
                 /* could not allocate memory */

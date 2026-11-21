@@ -1578,6 +1578,7 @@ const fixed64 lsp_pow_e_table[] ICONST_ATTR_WMA_XL_IRAM =
     0x0LL
 };
 
+#ifndef WMA_HEAP_BUFFERS /* generated there (wma_noise()) */
 /* table of exp noise values multiplied by 16 in order to reduce rounding error,
  * note that that first value (0x5) is used as a magic number in the init code*/
 fixed32 noisetable_exp[] =
@@ -2607,4 +2608,4 @@ fixed32 noisetable_exp[] =
     0x5a1b, 0x5a7d, 0xffffccab, 0xfffffcd1, 0xffffa33b, 0xffff9848, 0x31d8, 0x2224,
     0x2eb0, 0xffffa658, 0xffff9e76, 0xffffd97a, 0x65a8, 0xffff8029, 0xf42, 0x2c21
 };
-
+#endif /* !WMA_HEAP_BUFFERS */

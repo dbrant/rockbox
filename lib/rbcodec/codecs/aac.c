@@ -82,6 +82,14 @@ enum codec_status codec_run(void)
         return CODEC_ERROR;
     }
 
+#ifdef FAAD_SBR_LOWMEM
+    /* before the demuxer's tables take the heap */
+    if (NeAACDecReserveSBR(ci->id3->codectype == AFMT_MP4_AAC_HE)) {
+        LOGF("FAAD: no memory for SBR\n");
+        return CODEC_ERROR;
+    }
+#endif
+
     action = CODEC_ACTION_NULL;
     param = ci->id3->elapsed;
     file_offset = ci->id3->offset;
@@ -226,7 +234,13 @@ enum codec_status codec_run(void)
         /* Output the audio */
         ci->yield();
 
+#ifdef YP3_SL6801
+        /* mono too: libfaad upmixes it to stereo only with PS_DEC */
+        frame_samples = frame_info.channels > 1 ?
+            frame_info.samples >> 1 : frame_info.samples;
+#else
         frame_samples = frame_info.samples >> 1;
+#endif
 
         if (empty_first_frame)
         {
@@ -272,8 +286,13 @@ enum codec_status codec_run(void)
 
         if (framelength > 0)
         {
+#ifdef YP3_SL6801
+            int ch1 = frame_info.channels > 1; /* mono: channel 0 twice */
+#else
+            int ch1 = 1;
+#endif
             ci->pcmbuf_insert(&decoder->time_out[0][lead_trim],
-                              &decoder->time_out[1][lead_trim],
+                              &decoder->time_out[ch1][lead_trim],
                               framelength);
             sound_samples_done += framelength;
             /* Update the elapsed-time indicator */

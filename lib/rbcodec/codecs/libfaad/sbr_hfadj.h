@@ -36,6 +36,9 @@ typedef struct
     real_t G_lim_boost[MAX_L_E][MAX_M];
     real_t Q_M_lim_boost[MAX_L_E][MAX_M];
     real_t S_M_boost[MAX_L_E][MAX_M];
+#ifdef FAAD_SBR_LOWMEM
+    real_t E_curr[64][MAX_L_E];
+#endif
 } sbr_hfadj_info;
 
 

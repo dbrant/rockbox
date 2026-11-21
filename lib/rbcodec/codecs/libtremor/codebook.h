@@ -33,10 +33,20 @@
 
 */
 
+/* YP3: codeword lengths (<= 32) in bytes and decode indexes in 16 bits
+ * save ~37 KB of heap at setup (books of <= 65535 entries) */
+#ifdef TREMOR_LOWMEM
+typedef unsigned char  book_length_t;
+typedef unsigned short book_index_t;
+#else
+typedef long book_length_t;
+typedef int  book_index_t;
+#endif
+
 typedef struct static_codebook{
   long   dim;            /* codebook dimensions (elements per vector) */
   long   entries;        /* codebook entries */
-  long  *lengthlist;     /* codeword lengths in bits */
+  book_length_t *lengthlist; /* codeword lengths in bits */
 
   /* mapping ***************************************************************/
   int    maptype;        /* 0=none
@@ -65,7 +75,7 @@ typedef struct codebook{
   ogg_int32_t  *valuelist;  /* list of dim*entries actual entry values */  
   ogg_uint32_t *codelist;   /* list of bitstream codewords for each entry */
 
-  int          *dec_index;  
+  book_index_t *dec_index;
   char         *dec_codelengths;
   ogg_uint32_t *dec_firsttable;
   int           dec_firsttablen;

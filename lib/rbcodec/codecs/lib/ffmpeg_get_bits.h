@@ -572,6 +572,17 @@ int init_vlc_sparse(VLC *vlc, int nb_bits, int nb_codes,
              const void *codes, int codes_wrap, int codes_size,
              const void *symbols, int symbols_wrap, int symbols_size,
              int flags);
+#ifdef FFMPEG_VLC_LOWMEM
+/* YP3: init_vlc_sparse() with a caller's scratch buffer of
+ * INIT_VLC_BUF_SIZE(nb_codes) bytes, so a codec that only uses this one is
+ * not charged init_vlc_sparse()'s static one (~9 KB of bss) */
+#define INIT_VLC_BUF_SIZE(nb_codes) (((nb_codes) + 1) * 7)
+int init_vlc_sparse_buf(VLC *vlc, int nb_bits, int nb_codes,
+             const void *bits, int bits_wrap, int bits_size,
+             const void *codes, int codes_wrap, int codes_size,
+             const void *symbols, int symbols_wrap, int symbols_size,
+             int flags, void *buf, size_t buf_size);
+#endif
 #define INIT_VLC_LE         2
 #define INIT_VLC_USE_NEW_STATIC 4
 void free_vlc(VLC *vlc);

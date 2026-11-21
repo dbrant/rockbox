@@ -44,6 +44,12 @@
 
 /***************** EXPORTED *****************/
 
+#ifdef HAVE_FS_SCAN_YIELD
+/* mp3data.c yields in long scans */
+volatile long current_tick;
+void yield(void) { }
+#endif
+
 struct user_settings global_settings;
 
 int set_irq_level(int level)
@@ -426,12 +432,38 @@ static void perform_config(void)
     }
 }
 
+/* WARBLE_CODECBUF=<bytes>: the codec buffer size (default 64 MiB), to
+ * check a codec against a target's arena */
 static void *ci_codec_get_buffer(size_t *size)
 {
-    static char buffer[64 * 1024 * 1024] MEM_ALIGN_ATTR;
-    *size = sizeof(buffer);
+    static char *buffer;
+    static size_t bufsize;
+    if (!buffer) {
+        const char *e = getenv("WARBLE_CODECBUF");
+        bufsize = e ? strtoul(e, NULL, 0) : 64 * 1024 * 1024;
+        buffer = aligned_alloc(64, (bufsize + 63) & ~(size_t)63);
+    }
+    *size = bufsize;
     return buffer;
 }
+
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+/* WARBLE_EXTRABUF=<bytes>: playback memory lent to the codec (default
+ * none) */
+static void *ci_codec_get_extra_buffer(size_t *size)
+{
+    static char *buffer;
+    static size_t bufsize;
+    if (!buffer) {
+        const char *e = getenv("WARBLE_EXTRABUF");
+        bufsize = e ? strtoul(e, NULL, 0) : 0;
+        if (bufsize)
+            buffer = aligned_alloc(64, (bufsize + 63) & ~(size_t)63);
+    }
+    *size = buffer ? bufsize : 0;
+    return buffer;
+}
+#endif
 
 static void ci_pcmbuf_insert(const void *ch1, const void *ch2, int count)
 {
@@ -779,6 +811,11 @@ static struct codec_api ci = {
     ci_enc_stream_write,
     ci_round_value_to_list32,
 #endif /* HAVE_RECORDING */
+
+    panicf,
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+    ci_codec_get_extra_buffer,
+#endif
 };
 
 static void print_mp3entry(const struct mp3entry *id3, FILE *f)

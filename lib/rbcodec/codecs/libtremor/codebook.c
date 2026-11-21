@@ -49,7 +49,7 @@ static_codebook *vorbis_staticbook_unpack(oggpack_buffer *opb){
     if((s->entries*(unused?1:5)+7)>>3>opb->storage-oggpack_bytes(opb))
       goto _eofout;
     /* unordered */
-    s->lengthlist=(long *)_ogg_malloc(sizeof(*s->lengthlist)*s->entries);
+    s->lengthlist=(book_length_t *)_ogg_malloc(sizeof(*s->lengthlist)*s->entries);
 
     /* allocated but unused entries? */
     if(unused){
@@ -79,7 +79,7 @@ static_codebook *vorbis_staticbook_unpack(oggpack_buffer *opb){
     {
       long length=oggpack_read(opb,5)+1;
       if(length==0)goto _eofout;
-      s->lengthlist=(long *)_ogg_malloc(sizeof(*s->lengthlist)*s->entries);
+      s->lengthlist=(book_length_t *)_ogg_malloc(sizeof(*s->lengthlist)*s->entries);
 
       for(i=0;i<s->entries;){
 	long num=oggpack_read(opb,_ilog(s->entries-i));

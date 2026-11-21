@@ -286,6 +286,9 @@ static bool read_mp4_esds(int fd, struct mp3entry* id3, uint32_t* size)
         {
             id3->frequency = sample_rates[index];
         }
+#if defined(YP3_SL6801) && !defined(CODEC_AAC_SBR_DEC)
+        const unsigned long core_frequency = id3->frequency;
+#endif
 
         if (type == 5)
         {
@@ -361,6 +364,16 @@ static bool read_mp4_esds(int fd, struct mp3entry* id3, uint32_t* size)
             id3->frequency *= 2;
             sbr = true;
         }
+#if defined(YP3_SL6801) && !defined(CODEC_AAC_SBR_DEC)
+        /* No SBR decoder: HE-AAC plays its core at the core rate, without
+         * the high band, instead of the core samples at the SBR rate
+         * (twice as fast). */
+        if (sbr)
+        {
+            id3->frequency = core_frequency;
+            sbr = false;
+        }
+#endif
     }
 
     return sbr;
@@ -388,8 +401,15 @@ static void read_mp4_tag_i_from_n(int fd, int *i, char** i_from_n_string, uint32
     }
 }
 
+#if defined(CONFIG_CPU) && CONFIG_CPU == SL6801
+/* Not inlined: its name/value buffers would otherwise sit in every level of
+ * the recursive read_mp4_container() and overflow small thread stacks. */
+static bool NO_INLINE read_mp4_tags(int fd, struct mp3entry* id3,
+                                    uint32_t size_left)
+#else
 static bool read_mp4_tags(int fd, struct mp3entry* id3,
                           uint32_t size_left)
+#endif
 {
     uint32_t size;
     uint32_t type;

@@ -146,6 +146,38 @@ bool get_ogg_metadata(int fd, struct mp3entry* id3)
      * by ('O','g','g','S',0) and retrieve totalsamples.
      */
 
+#ifdef OGG_METADATA_SCAN_BACK
+    /* A page is always < 64 kB. Search backwards from the end: the first
+     * header found is the last page's, a few sectors in. Upstream reads the
+     * whole last 64 kB a sector at a time (~600 ms on the YP3's SD card,
+     * read more than once as a track starts) */
+    {
+        long limit = id3->filesize - MIN(64 * 1024, id3->filesize);
+        long end = id3->filesize;   /* headers starting before end - 17 */
+        (void)eof; (void)r; (void)remaining; (void)segments;
+        while (end - limit > 17)
+        {
+            long pos = MAX(end - MAX_PATH, limit);
+            long n = end - pos;
+            if (lseek(fd, pos, SEEK_SET) < 0 || read(fd, buf, n) != n)
+                return false;
+            for (i = n - 18; i >= 0; i--)
+            {
+                if (buf[i] == 'O' && memcmp(&buf[i], "OggS", 4) == 0
+                    && buf[i + 4] == 0)
+                {
+                    /* the low 32 bits of the granule position */
+                    id3->samples = get_long_le(&buf[i + 6]);
+                    last_serial = get_long_le(&buf[i + 14]);
+                    break;
+                }
+            }
+            if (i >= 0 || pos == limit)
+                break;
+            end = pos + 17;         /* a header across the window's start */
+        }
+    }
+#else
     /* A page is always < 64 kB */
     if (lseek(fd, -(MIN(64 * 1024, id3->filesize)), SEEK_END) < 0)
     {
@@ -213,6 +245,8 @@ bool get_ogg_metadata(int fd, struct mp3entry* id3)
             remaining = 0;
         }
     }
+
+#endif
 
     /* This file has mutiple vorbis bitstreams (or is corrupt). */
     /* FIXME we should display an error here. */

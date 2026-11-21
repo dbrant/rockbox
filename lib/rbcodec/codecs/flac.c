@@ -28,13 +28,19 @@ static FLACContext fc IBSS_ATTR_FLAC;
 /* The output buffers containing the decoded samples (channels 0 and 1) */
 static int32_t decoded0[MAX_BLOCKSIZE] IBSS_ATTR_FLAC;
 static int32_t decoded1[MAX_BLOCKSIZE] IBSS_ATTR_FLAC;
+#if MAX_CHANNELS > 2
 static int32_t decoded2[MAX_BLOCKSIZE] IBSS_ATTR_FLAC_LARGE_IRAM;
 static int32_t decoded3[MAX_BLOCKSIZE] IBSS_ATTR_FLAC_LARGE_IRAM;
 static int32_t decoded4[MAX_BLOCKSIZE] IBSS_ATTR_FLAC_XLARGE_IRAM;
 static int32_t decoded5[MAX_BLOCKSIZE] IBSS_ATTR_FLAC_XLARGE_IRAM;
 static int32_t decoded6[MAX_BLOCKSIZE] IBSS_ATTR_FLAC_XXLARGE_IRAM;
+#endif
 
+#if MEMORYSIZE < 2
+#define MAX_SUPPORTED_SEEKTABLE_SIZE 1000 /* 12 KB; later points are dropped */
+#else
 #define MAX_SUPPORTED_SEEKTABLE_SIZE 5000
+#endif
 
 /* Notes about seeking:
 
@@ -111,20 +117,24 @@ static bool flac_init(FLACContext* fc, int first_frame_offset)
     /* Reset sample buffers */
     ci->memset(decoded0, 0, sizeof(decoded0));
     ci->memset(decoded1, 0, sizeof(decoded1));
+#if MAX_CHANNELS > 2
     ci->memset(decoded2, 0, sizeof(decoded2));
     ci->memset(decoded3, 0, sizeof(decoded3));
     ci->memset(decoded4, 0, sizeof(decoded4));
     ci->memset(decoded5, 0, sizeof(decoded5));
     ci->memset(decoded6, 0, sizeof(decoded5));
+#endif
 
     /* Set sample buffers in decoder structure */
     fc->decoded[0] = decoded0;
     fc->decoded[1] = decoded1;
+#if MAX_CHANNELS > 2
     fc->decoded[2] = decoded2;
     fc->decoded[3] = decoded3;
     fc->decoded[4] = decoded4;
     fc->decoded[5] = decoded5;
     fc->decoded[6] = decoded6;
+#endif
 
     /* Skip any foreign tags at start of file */
     ci->seek_buffer(first_frame_offset);

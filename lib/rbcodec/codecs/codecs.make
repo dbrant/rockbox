@@ -222,6 +222,12 @@ $(CODECDIR)/aac_bsf.codec : $(CODECDIR)/libfaad.a
 
 $(CODECS): $(CODEC_LIBS) # this must be last in codec dependency list
 
+ifeq ($(MODELNAME),yp3)
+ifneq ($(APP_TYPE),sdl-sim)     # the simulator has no codec flash
+include $(FIRMDIR)/target/arm/sl6801/xip-codecs/xip-codecs.make
+endif
+endif
+
 # pattern rule for compiling codecs
 $(CODECDIR)/%.o: $(RBCODECLIB_DIR)/codecs/%.c
 	$(SILENT)mkdir -p $(dir $@)

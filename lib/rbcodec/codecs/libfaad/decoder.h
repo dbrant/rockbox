@@ -72,6 +72,9 @@ extern "C" {
 char* NEAACDECAPI NeAACDecGetErrorMessage(uint8_t errcode);
 
 NeAACDecHandle NEAACDECAPI NeAACDecOpen(void);
+#ifdef FAAD_SBR_LOWMEM
+uint8_t NEAACDECAPI NeAACDecReserveSBR(uint8_t sbr);
+#endif
 
 NeAACDecConfigurationPtr NEAACDECAPI NeAACDecGetCurrentConfiguration(NeAACDecHandle hDecoder);
 

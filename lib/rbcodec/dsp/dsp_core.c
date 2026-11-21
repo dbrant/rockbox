@@ -73,7 +73,9 @@ dsp_proc_slot_arr[DSP_NUM_PROC_STAGES+DSP_VOICE_NUM_PROC_STAGES] IBSS_ATTR;
 static struct dsp_config dsp_conf[DSP_COUNT] IBSS_ATTR;
 
 static const dsp_proc_init_fn_type dsp_init_fn[] INITDATA_ATTR = {
+#ifdef HAVE_PITCHCONTROL
     &dsp_timestretch_init,
+#endif
     &dsp_resample_init,
 };
 

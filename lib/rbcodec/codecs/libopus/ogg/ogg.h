@@ -181,6 +181,9 @@ extern int      ogg_stream_packetpeek(ogg_stream_state *os,ogg_packet *op);
 /* Ogg BITSTREAM PRIMITIVES: general ***************************/
 
 extern int      ogg_stream_init(ogg_stream_state *os,int serialno);
+#ifdef OPUS_LOWMEM
+extern long     ogg_stream_body_init;   /* initial body_storage (opus.c) */
+#endif
 extern int      ogg_stream_clear(ogg_stream_state *os);
 extern int      ogg_stream_reset(ogg_stream_state *os);
 extern int      ogg_stream_reset_serialno(ogg_stream_state *os,int serialno);

@@ -137,6 +137,12 @@ static void surround_set_delay(int surround_delay_ms)
 
 void dsp_surround_enable(int delay_ms)
 {
+#ifdef HAVE_NO_SURROUND
+    /* Its 31 KB delay buffer comes out of the playback buffer, which then
+     * stayed shrunk (stutter "until a reset"): not offered here, and a
+     * .cfg cannot turn it on either. */
+    delay_ms = 0;
+#endif
     if (delay_ms == surround_delay_ms)
         return; /* No setting change */
 

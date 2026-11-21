@@ -3,7 +3,11 @@
 
 #include "bitstream.h"
 
+#if MEMORYSIZE < 2
+#define MAX_CHANNELS   2      /* Sub-2 MB targets: stereo files only */
+#else
 #define MAX_CHANNELS   7      /* Maximum supported channels, only left/right will be played back */
+#endif
 #ifndef MAX_BLOCKSIZE
 #define MAX_BLOCKSIZE  4608   /* Maxsize in samples of one uncompressed frame */
 #endif

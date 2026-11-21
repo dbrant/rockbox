@@ -554,13 +554,16 @@ static int decode_frame(FLACContext *s,
 static int flac_downmix(FLACContext *s) ICODE_ATTR_FLAC;
 static int flac_downmix(FLACContext *s)
 {
+#if MAX_CHANNELS > 2
     int32_t *FL, *FR, *FC, *SB, *RL, *RR, *RC;
     int32_t *outL = s->decoded[0];
     int32_t *outR = s->decoded[1];
     int i, scale=FLAC_OUTPUT_DEPTH-s->bps;
+#endif
 
     switch(s->channels)
     {
+#if MAX_CHANNELS > 2
         case 3: /* 3.0 channel order: FL FR FC */
             FL = s->decoded[0];
             FR = s->decoded[1];
@@ -641,6 +644,7 @@ static int flac_downmix(FLACContext *s)
                 FL++; FR++; SB++; FC++; RL++; RR++; RC++;
             }
             break;
+#endif
         default: /* 1.0 and 2.0 do not need downmix, other formats unknown. */
             return -501;
             break;

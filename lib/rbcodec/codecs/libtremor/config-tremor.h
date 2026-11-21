@@ -27,8 +27,10 @@
    such different ram is available. There are 3 different memory configurations
    * No special iram, uses double buffers to avoid copying data
    * Small special iram, copies buffers to run hottest processing in iram
-   * Large iram, uses double buffers in iram */
-#ifdef USE_IRAM
+   * Large iram, uses double buffers in iram
+   XIP codecs (SL6801): the codec arena is the SRAM, so a static buffer here
+   would only take the heap these buffers come from anyway. */
+#if defined(USE_IRAM) && !defined(HAVE_XIP_CODECS)
 #define TREMOR_USE_IRAM
 
 /* Define CPU of large IRAM (PP5022/5024, S5L87XX, MCF5250)     */

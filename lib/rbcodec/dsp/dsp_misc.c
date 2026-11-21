@@ -183,6 +183,7 @@ static intptr_t misc_handler_configure(struct dsp_proc_entry *this,
 
     return 0;
     (void)this;
+    (void)dsp;
 }
 
 /* Database entry */

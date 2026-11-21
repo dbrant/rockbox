@@ -31,12 +31,24 @@
 static size_t mem_ptr = 0;
 static size_t bufsize = 0;
 static unsigned char* mallocbuf = NULL;
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+/* playback memory lent to the codec while it plays: a second heap */
+static size_t extra_ptr = 0;
+static size_t extra_size = 0;
+static unsigned char* extra_buf = NULL;
+#endif
 
 int codec_init(void)
 {
     /* codec_get_buffer() aligns the resulting point to MEM_ALIGN_SIZE. */
     mem_ptr = 0;
     mallocbuf = (unsigned char *)ci->codec_get_buffer((size_t *)&bufsize);
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+    extra_ptr = 0;
+    extra_size = 0;
+    extra_buf = ci->codec_get_extra_buffer ?
+        (unsigned char *)ci->codec_get_extra_buffer(&extra_size) : NULL;
+#endif
 
     return 0;
 }
@@ -62,7 +74,17 @@ void* codec_malloc(size_t size)
     void* x;
 
     if (mem_ptr + (long)size > bufsize)
+    {
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+        if (extra_buf && extra_ptr + size <= extra_size)
+        {
+            x = &extra_buf[extra_ptr];
+            extra_ptr += MEM_ALIGN_UP(size);
+            return x;
+        }
+#endif
         return NULL;
+    }
 
     x=&mallocbuf[mem_ptr];
 

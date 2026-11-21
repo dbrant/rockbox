@@ -62,6 +62,20 @@ static int getsonglength(int fd, struct mp3entry *entry)
     if(-1 == lseek(fd, entry->id3v2len, SEEK_SET))
         return 0;
 
+#ifdef YP3_SL6801
+    /* The frame search scans up to 1 MiB a byte at a time, from uncached
+     * XIP here: a WMA file named .mp3 took 23 s to fail (a folder skip
+     * stalled, then playback stopped). Containers that never hold a raw
+     * MPEG stream fail at once. */
+    static const unsigned char asf_guid[8] =
+        { 0x30, 0x26, 0xb2, 0x75, 0x8e, 0x66, 0xcf, 0x11 };
+    unsigned char head[8];
+    if (read(fd, head, sizeof head) == sizeof head &&
+        (!memcmp(head, asf_guid, 8) || !memcmp(head, "fLaC", 4) ||
+         !memcmp(head, "OggS", 4) || !memcmp(head + 4, "ftyp", 4)))
+        return -1;
+    lseek(fd, entry->id3v2len, SEEK_SET);
+#endif
     bytecount = get_mp3file_info(fd, &info);
 
     logf("Space between ID3V2 tag and first audio frame: 0x%lx bytes",

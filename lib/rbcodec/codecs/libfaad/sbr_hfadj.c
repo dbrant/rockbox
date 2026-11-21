@@ -44,6 +44,12 @@
 #define REAL_DOWNSCALE(A) (A)
 #endif
 
+#ifdef FAAD_SBR_LOWMEM
+#define SBR_E_CURR adj->E_curr /* only needed while one channel is adjusted */
+#else
+#define SBR_E_CURR sbr->E_curr[ch]
+#endif
+
 /* static function declarations */
 static void estimate_current_envelope(sbr_info *sbr, sbr_hfadj_info *adj,
                                       qmf_t Xsbr[MAX_NTSRHFG][64], uint8_t ch);
@@ -164,9 +170,9 @@ static void estimate_current_envelope(sbr_info *sbr, sbr_hfadj_info *adj,
 #endif
                 }
 
-                sbr->E_curr[ch][m][l] = nrg / div;
+                SBR_E_CURR[m][l] = nrg / div;
 #ifdef SBR_LOW_POWER
-                sbr->E_curr[ch][m][l] *= 2;
+                SBR_E_CURR[m][l] *= 2;
 #endif
             }
         }
@@ -201,9 +207,9 @@ static void estimate_current_envelope(sbr_info *sbr, sbr_hfadj_info *adj,
                         }
                     }
 
-                    sbr->E_curr[ch][k - sbr->kx][l] = nrg / div;
+                    SBR_E_CURR[k - sbr->kx][l] = nrg / div;
 #ifdef SBR_LOW_POWER
-                    sbr->E_curr[ch][k - sbr->kx][l] *= 2;
+                    SBR_E_CURR[k - sbr->kx][l] *= 2;
 #endif
                 }
             }
@@ -466,7 +472,7 @@ static void calculate_gain(sbr_info *sbr, sbr_hfadj_info *adj, uint8_t ch)
                     current_res_band_size = 1;
                 }
 
-                acc2 += sbr->E_curr[ch][m][l];
+                acc2 += SBR_E_CURR[m][l];
             }
             acc1 += pow2_int(-REAL_CONST(10) + log2_int_tab[current_res_band_size] + find_log2_E(sbr, current_res_band, l, ch));
 
@@ -542,10 +548,10 @@ static void calculate_gain(sbr_info *sbr, sbr_hfadj_info *adj, uint8_t ch)
 
 
                 /* find bitstream parameters */
-                if (sbr->E_curr[ch][m][l] == 0)
+                if (SBR_E_CURR[m][l] == 0)
                     E_curr = LOG2_MIN_INF;
                 else
-                    E_curr = log2_int(sbr->E_curr[ch][m][l]);
+                    E_curr = log2_int(SBR_E_CURR[m][l]);
                 E_orig = -REAL_CONST(10) + find_log2_E(sbr, current_res_band2, l, ch);
 
 
@@ -929,7 +935,7 @@ static void calculate_gain(sbr_info *sbr, sbr_hfadj_info *adj, uint8_t ch)
                     current_res_band_size = 1;
                 }
 
-                acc2 += QUANTISE2INT(sbr->E_curr[ch][m][l]/1024.0);
+                acc2 += QUANTISE2INT(SBR_E_CURR[m][l]/1024.0);
             }
             acc1 += QUANTISE2INT(pow2(-10 + log2_int_tab[current_res_band_size] + find_log2_E(sbr, current_res_band, l, ch)));
 
@@ -1001,10 +1007,10 @@ static void calculate_gain(sbr_info *sbr, sbr_hfadj_info *adj, uint8_t ch)
 
 
                 /* find bitstream parameters */
-                if (sbr->E_curr[ch][m][l] == 0)
+                if (SBR_E_CURR[m][l] == 0)
                     E_curr = LOG2_MIN_INF;
                 else
-                    E_curr = -10 + log2(sbr->E_curr[ch][m][l]);
+                    E_curr = -10 + log2(SBR_E_CURR[m][l]);
                 E_orig = -10 + find_log2_E(sbr, current_res_band2, l, ch);
 
                 Q_orig = find_log2_Q(sbr, current_f_noise_band, current_t_noise_band, ch);
@@ -1167,7 +1173,7 @@ static void calculate_gain(sbr_info *sbr, sbr_hfadj_info *adj, uint8_t ch)
                     current_res_band++;
                 }
                 acc1 += sbr->E_orig[ch][current_res_band][l];
-                acc2 += sbr->E_curr[ch][m][l];
+                acc2 += SBR_E_CURR[m][l];
             }
 
 
@@ -1262,7 +1268,7 @@ static void calculate_gain(sbr_info *sbr, sbr_hfadj_info *adj, uint8_t ch)
                 /* ratio of the energy of the original signal and the energy
                  * of the HF generated signal
                  */
-                G = sbr->E_orig[ch][current_res_band2][l] / (1.0 + sbr->E_curr[ch][m][l]);
+                G = sbr->E_orig[ch][current_res_band2][l] / (1.0 + SBR_E_CURR[m][l]);
                 if ((S_mapped == 0) && (delta == 1))
                     G *= Q_div;
                 else if (S_mapped == 1)
@@ -1282,7 +1288,7 @@ static void calculate_gain(sbr_info *sbr, sbr_hfadj_info *adj, uint8_t ch)
 
 
                 /* accumulate the total energy */
-                den += sbr->E_curr[ch][m][l] * G_lim[m];
+                den += SBR_E_CURR[m][l] * G_lim[m];
                 if ((S_index_mapped == 0) && (l != sbr->l_A[ch]))
                     den += Q_M_lim[m];
             }
@@ -1381,8 +1387,8 @@ static void aliasing_reduction(sbr_info *sbr, sbr_hfadj_info *adj, real_t *deg, 
                 /* G_lim_boost: fixed point */
                 /* E_total_est: integer */
                 /* E_total: integer */
-                E_total_est += sbr->E_curr[ch][m-sbr->kx][l];
-                E_total += MUL_Q2(sbr->E_curr[ch][m-sbr->kx][l], adj->G_lim_boost[l][m-sbr->kx]);
+                E_total_est += SBR_E_CURR[m-sbr->kx][l];
+                E_total += MUL_Q2(SBR_E_CURR[m-sbr->kx][l], adj->G_lim_boost[l][m-sbr->kx]);
             }
 
             /* G_target: fixed point */
@@ -1410,7 +1416,7 @@ static void aliasing_reduction(sbr_info *sbr, sbr_hfadj_info *adj, real_t *deg, 
                     MUL_C((COEF_CONST(1)-alpha), adj->G_lim_boost[l][m-sbr->kx]);
 
                 /* acc: integer */
-                acc += MUL_Q2(adj->G_lim_boost[l][m-sbr->kx], sbr->E_curr[ch][m-sbr->kx][l]);
+                acc += MUL_Q2(adj->G_lim_boost[l][m-sbr->kx], SBR_E_CURR[m-sbr->kx][l]);
             }
 
             /* acc: fixed point */

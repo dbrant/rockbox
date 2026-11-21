@@ -221,6 +221,17 @@ uint32_t random_int(void)
     return (__r1 = (t3 >> 1) | t1 ) ^ (__r2 = (t4 + t4) | t2 );
 }
 
+#ifdef YP3_SL6801
+/* Per stream, as later faad2 keeps the state in the decoder: otherwise a
+ * track's PNS noise depends on the tracks decoded before it in the same
+ * codec load. */
+void random_reset(void)
+{
+    __r1 = 1;
+    __r2 = 1;
+}
+#endif
+
 #define floor_log2(x) bs_generic(x, BS_LOG2)
 
 #ifdef FIXED_POINT

@@ -65,10 +65,17 @@ static ogg_int32_t _float32_unpack(long val,int *point){
   return mant;
 }
 
+#ifdef VORBIS_BOOK_INIT_ICODE
+/* codebook setup from SRAM: from flash it took ~1.7 s of a q5 start */
+#define BOOK_INIT_ATTR ICODE_ATTR
+#else
+#define BOOK_INIT_ATTR
+#endif
+
 /* given a list of word lengths, generate a list of codewords.  Works
    for length ordered or unordered, always assigns the lowest valued
    codewords first.  Extended to handle unused entries (length 0) */
-static ogg_uint32_t *_make_words(long *l,long n,long sparsecount){
+static BOOK_INIT_ATTR ogg_uint32_t *_make_words(book_length_t *l,long n,long sparsecount){
   long i,j,count=0;
   ogg_uint32_t marker[33];
   ogg_uint32_t *r=(ogg_uint32_t *)_ogg_malloc((sparsecount?sparsecount:n)*sizeof(*r));
@@ -192,7 +199,7 @@ long _book_maptype1_quantvals(const static_codebook *b){
    the values in the quant vector). in map type 2, all the values came
    in in an explicit list.  Both value lists must be unpacked */
 
-static ogg_int32_t *_book_unquantize(const static_codebook *b,int n,
+static BOOK_INIT_ATTR ogg_int32_t *_book_unquantize(const static_codebook *b,int n,
                                      int *sparsemap,int *maxpoint){
   long j,k,count=0;
   if(b->maptype==1 || b->maptype==2){
@@ -329,7 +336,7 @@ static int sort32a(const void *a,const void *b){
 }
 
 /* decode codebook arrangement is more heavily optimized than encode */
-int vorbis_book_init_decode(codebook *c,const static_codebook *s){
+int BOOK_INIT_ATTR vorbis_book_init_decode(codebook *c,const static_codebook *s){
   int i,j,n=0,tabn;
   int *sortindex;
   memset(c,0,sizeof(*c));
@@ -387,7 +394,10 @@ int vorbis_book_init_decode(codebook *c,const static_codebook *s){
     
     
     c->valuelist=_book_unquantize(s,n,sortindex,&c->binarypoint);
-    c->dec_index=(int *)_ogg_malloc(n*sizeof(*c->dec_index));
+#ifdef TREMOR_LOWMEM
+    if(s->entries>65535)goto err_out;
+#endif
+    c->dec_index=(book_index_t *)_ogg_malloc(n*sizeof(*c->dec_index));
     
     for(n=0,i=0;i<s->entries;i++)
       if(s->lengthlist[i]>0)

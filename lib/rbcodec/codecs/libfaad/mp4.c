@@ -112,8 +112,8 @@ static uint8_t ObjectTypesTable[32] = {
     0, /* 27 ER Parametric */
 #endif
     0, /* 28 (Reserved) */
-#ifdef PS_DEC
-    1, /* 29 AAC LC + SBR + PS */
+#if defined(PS_DEC) || defined(FAAD_SBR_LOWMEM)
+    1, /* 29 AAC LC + SBR + PS (FAAD_SBR_LOWMEM: SBR only, mono) */
 #else
     0, /* 29 AAC LC + SBR + PS */
 #endif

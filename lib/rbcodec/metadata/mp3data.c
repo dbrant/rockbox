@@ -37,6 +37,9 @@
 #include "logf.h"
 #include "mp3data.h"
 #include "platform.h"
+#ifdef HAVE_FS_SCAN_YIELD
+#include "kernel.h"
+#endif
 
 #include "metadata.h"
 #include "metadata/metadata_parsers.h"
@@ -223,6 +226,20 @@ static void read_uint32be_mp3data(int fd, unsigned long *data)
 #endif
 }
 
+static int fileread(int fd, unsigned char *c)
+{    
+    return read(fd, c, 1);
+}
+
+/* Give back bytes read ahead into the search buffer, so the file position
+   is where one-byte reads would have left it. */
+static void unread_ahead(int fd, int *rpos, int *rlen)
+{
+    if (*rlen > *rpos)
+        lseek(fd, *rpos - *rlen, SEEK_CUR);
+    *rpos = *rlen = 0;
+}
+
 static unsigned long __find_next_frame(int fd, long *offset, long max_offset,
                                        unsigned long reference_header,
                                        int(*getfunc)(int fd, unsigned char *c),
@@ -231,6 +248,14 @@ static unsigned long __find_next_frame(int fd, long *offset, long max_offset,
     unsigned long header=0;
     unsigned char tmp;
     long pos      = 0;
+    /* File reads go through a small buffer: a read() per byte over up to
+       max_offset (1 MiB) of garbage took minutes on slow targets. */
+    bool buffered = getfunc == fileread;
+    unsigned char rbuf[128];
+    int rpos = 0, rlen = 0;
+#ifdef HAVE_FS_SCAN_YIELD
+    long last_yield = current_tick;
+#endif
 
     /* We will search until we find two consecutive MPEG frame headers with 
      * the same MPEG version, layer and sampling frequency. The first header
@@ -239,14 +264,35 @@ static unsigned long __find_next_frame(int fd, long *offset, long max_offset,
     do {
         /* Read 1 new byte. */
         header <<= 8;
-        if (!getfunc(fd, &tmp))
+        if (buffered)
+        {
+            if (rpos >= rlen)
+            {
+                rlen = read(fd, rbuf, sizeof (rbuf));
+                rpos = 0;
+                if (rlen <= 0)
+                    return 0;
+            }
+            tmp = rbuf[rpos++];
+        }
+        else if (!getfunc(fd, &tmp))
             return 0;
         header |= tmp;
         pos++;
         
         /* Abort if max_offset is reached. Stop parsing. */
         if (max_offset > 0 && pos > max_offset)
+        {
+            unread_ahead(fd, &rpos, &rlen);
             return 0;
+        }
+#ifdef HAVE_FS_SCAN_YIELD
+        /* up to 1 MiB of garbage, one read() per byte: minutes of CPU */
+        if (TIME_AFTER(current_tick, last_yield)) {
+            yield();
+            last_yield = current_tick;
+        }
+#endif
         
         if (is_mp3frameheader(header)) {
             if (single_header) {
@@ -264,6 +310,7 @@ static unsigned long __find_next_frame(int fd, long *offset, long max_offset,
                 /* Gather frame size from given header and seek to next
                  * frame header. */
                 if (!mp3headerinfo(&info, header)) continue;
+                unread_ahead(fd, &rpos, &rlen);
                 lseek(fd, info.frame_size-4, SEEK_CUR);
 
                 /* Read possible next frame header and seek back to last frame
@@ -285,17 +332,13 @@ static unsigned long __find_next_frame(int fd, long *offset, long max_offset,
 
     } while (true);
 
+    unread_ahead(fd, &rpos, &rlen);
     *offset = pos - 4;
 
     if(*offset)
         VDEBUGF("Warning: skipping %ld bytes of garbage\n", *offset);
 
     return header;
-}
-
-static int fileread(int fd, unsigned char *c)
-{    
-    return read(fd, c, 1);
 }
 
 unsigned long find_next_frame(int fd, 

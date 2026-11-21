@@ -9,6 +9,12 @@ static inline void ogg_malloc_init(void)
     size_t bufsize;
     void* buf = ci->codec_get_buffer(&bufsize);
     init_memory_pool(bufsize, buf);
+#ifdef HAVE_CODEC_EXTRA_BUFFER
+    size_t extra_size;
+    void *extra = ci->codec_get_extra_buffer(&extra_size);
+    if (extra)
+        add_new_area(extra, extra_size, buf);
+#endif
 }
 
 static inline void ogg_malloc_destroy(void)

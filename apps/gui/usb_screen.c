@@ -307,6 +307,11 @@ void gui_usb_screen_run(bool early_usb, intptr_t seqnum)
         font_enable_all();
         /* Not pretty, reload all settings so fonts are loaded again correctly */
         settings_apply(true);
+#ifdef YP3_SL6801
+        /* and the theme's skins: a first install boots once before the card
+         * is written over USB, so they fell back to the built-in ones */
+        settings_apply_skins();
+#endif
         /* Reload playlist */
         playlist_resume();
     }

@@ -472,6 +472,8 @@ static char* messages[] =
     || (CONFIG_KEYPAD == IPOD_3G_PAD) \
     || (CONFIG_KEYPAD == IPOD_4G_PAD)
 #   define RFK_QUIT     PLA_SELECT_REPEAT
+#elif CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#   define RFK_QUIT     PLA_EXIT
 #else
 #   define RFK_QUIT     PLA_CANCEL
 #endif

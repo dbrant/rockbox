@@ -269,6 +269,11 @@ struct battery_tables_t {
 #define BATTERY_OFF     BUTTON_SELECT
 #define BATTERY_ON_TXT  "Start"
 #define BATTERY_OFF_TXT "Select"
+#elif CONFIG_KEYPAD == YP3_PAD
+#define BATTERY_ON      BUTTON_SELECT
+#define BATTERY_OFF     (BUTTON_SELECT | BUTTON_REPEAT)
+#define BATTERY_ON_TXT  "SELECT - start"
+#define BATTERY_OFF_TXT "Long SELECT"
 
 #else
 #error "No keymap defined!"
@@ -340,7 +345,12 @@ static int exit_tsr(bool reenter)
         button = rb->button_get(true);
         if (IS_SYSEVENT(button))
             continue;
+#ifdef HAVE_BLUETOOTH_HID
+        if (button == BATTERY_OFF || button == BUTTON_PAD_MENU
+            || button == BUTTON_PAD_HOME)
+#else
         if (button == BATTERY_OFF)
+#endif
         {
             rb->queue_post(&thread_q, EV_EXIT, 0);
             rb->thread_wait(gThread.id);
@@ -640,12 +650,20 @@ enum plugin_status plugin_start(const void* parameter)
             button = rb->button_get(true);
             switch (button)
             {
+    #ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_A:
+    #endif
                 case BATTERY_ON:
     #ifdef BATTERY_RC_ON
                 case BATTERY_RC_ON:
     #endif
                     on = true;
                     break;
+    #ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_B:
+                case BUTTON_PAD_MENU:
+                case BUTTON_PAD_HOME:
+    #endif
                 case BATTERY_OFF:
     #ifdef BATTERY_RC_OFF
                 case BATTERY_RC_OFF:

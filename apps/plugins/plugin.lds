@@ -2,6 +2,10 @@
 #include "config.h"
 #include "cpu.h"
 
+#ifdef HAVE_EXACT_MODULE_API
+#include "module_build_id.lds"
+#endif
+
 /* These output formats should be in the config-files */
 
 #ifdef CPU_COLDFIRE
@@ -130,6 +134,13 @@ OUTPUT_FORMAT(elf32-littlemips)
 #define DRAMORIG STM32_SDRAM1_BASE
 #define DRAMSIZE (MEMORYSIZE * 0x100000) - PLUGIN_BUFFER_SIZE - CODEC_SIZE
 
+#elif CONFIG_CPU == SL6801
+/* Codec and plugin images have the same VMA and exclusive ownership. */
+#define DRAMORIG SL6801_CORE_RAM_BASE
+#define DRAMSIZE (SL6801_MODULE_BASE - DRAMORIG)
+#define CODEC_ORIGIN SL6801_MODULE_BASE
+#define PLUGIN_ORIGIN SL6801_MODULE_BASE
+
 #else
 # error "DRAM/IRAM memory map not defined!"
 #endif
@@ -196,6 +207,14 @@ SECTIONS
     .data :
     {
         *(.data*)
+#ifdef YP3_SL6801
+        /* C++ static constructors, run by plugin_crt0.c */
+        . = ALIGN(4);
+        __plugin_init_array_start = .;
+        KEEP(*(SORT(.init_array.*)))
+        KEEP(*(.init_array))
+        __plugin_init_array_end = .;
+#endif
     } > PLUGIN_RAM
 
 #if defined(NOCACHE_BASE)

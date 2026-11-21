@@ -490,6 +490,18 @@
 #define LABEL_MENU   "Start"
 #define LABEL_VOLUME "Up/Down"
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define VUMETER_QUIT (BUTTON_SELECT | BUTTON_REPEAT)
+#define VUMETER_HELP (BUTTON_SELECT | BUTTON_LEFT)
+#define VUMETER_MENU_PRE BUTTON_SELECT
+#define VUMETER_MENU (BUTTON_SELECT | BUTTON_REL)
+#define VUMETER_UP BUTTON_UP
+#define VUMETER_DOWN BUTTON_DOWN
+#define LABEL_HELP "SELECT + LEFT"
+#define LABEL_QUIT "Long SELECT"
+#define LABEL_MENU "SELECT"
+#define LABEL_VOLUME "UP/DOWN"
+
 #else
 #error No keymap defined!
 #endif
@@ -673,7 +685,11 @@ static void change_volume(int delta) {
 
 static bool vu_meter_menu(void)
 {
+#ifdef YP3_SL6801
+    int selection = 0;  /* do_menu opens on it: not on a stray item */
+#else
     int selection;
+#endif
     bool menu_quit = false;
     bool exit = false;
 
@@ -1023,6 +1039,9 @@ enum plugin_status plugin_start(const void* parameter)
 #ifdef VUMETER_RC_QUIT
             case VUMETER_RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_HOME:
+#endif
             case VUMETER_QUIT:
                 save_settings();
                 return PLUGIN_OK;
@@ -1055,15 +1074,31 @@ enum plugin_status plugin_start(const void* parameter)
                     return PLUGIN_OK;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R2:
+            case BUTTON_PAD_R2 | BUTTON_REPEAT:
+#endif
             case VUMETER_UP:
             case VUMETER_UP | BUTTON_REPEAT:
                 change_volume(1);
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L2:
+            case BUTTON_PAD_L2 | BUTTON_REPEAT:
+#endif
             case VUMETER_DOWN:
             case VUMETER_DOWN | BUTTON_REPEAT:
                 change_volume(-1);
                 break;
+
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+            case BUTTON_PAD_MENU:
+                if(vu_meter_menu())
+                    return PLUGIN_OK;
+                break;
+#endif
 
             default:
                 if(rb->default_event_handler(button) == SYS_USB_CONNECTED)

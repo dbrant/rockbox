@@ -434,6 +434,17 @@
 #define CUBE_PAUSE         BUTTON_START
 #define CUBE_HIGHSPEED     BUTTON_A
 
+#elif (CONFIG_KEYPAD == YP3_PAD)
+#define CUBE_QUIT          (BUTTON_SELECT|BUTTON_REPEAT)
+#define CUBE_NEXT          BUTTON_RIGHT
+#define CUBE_PREV          BUTTON_LEFT
+#define CUBE_INC           BUTTON_UP
+#define CUBE_DEC           BUTTON_DOWN
+#define CUBE_MODE_PRE      BUTTON_SELECT
+#define CUBE_MODE          (BUTTON_SELECT|BUTTON_REL)
+#define CUBE_PAUSE         (BUTTON_SELECT|BUTTON_LEFT)
+#define CUBE_HIGHSPEED     (BUTTON_SELECT|BUTTON_RIGHT)
+
 #else
 #error No keymap defined!
 #endif
@@ -888,21 +899,34 @@ enum plugin_status plugin_start(const void* parameter)
                 redraw = true;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+#endif
             case CUBE_NEXT:
                 if (++curr > 2)
                     curr = 0;
                 t_disp = DISP_TIME;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+#endif
             case CUBE_PREV:
                 if (--curr < 0)
                     curr = 2;
                 t_disp = DISP_TIME;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+#endif
             case CUBE_MODE:
 #ifdef CUBE_MODE_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (lastbutton != CUBE_MODE_PRE && button != BUTTON_PAD_Y)
+#else
                 if (lastbutton != CUBE_MODE_PRE)
+#endif
                     break;
 #endif
                 if (++mode >= NUM_MODES)
@@ -914,17 +938,31 @@ enum plugin_status plugin_start(const void* parameter)
                 redraw = true;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case CUBE_PAUSE:
 #ifdef CUBE_PAUSE_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (lastbutton != CUBE_PAUSE_PRE && button != BUTTON_PAD_A)
+#else
                 if (lastbutton != CUBE_PAUSE_PRE)
+#endif
                     break;
 #endif
                 paused = !paused;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
+#endif
             case CUBE_HIGHSPEED:
 #ifdef CUBE_HIGHSPEED_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (lastbutton != CUBE_HIGHSPEED_PRE && button != BUTTON_PAD_X)
+#else
                 if (lastbutton != CUBE_HIGHSPEED_PRE)
+#endif
                     break;
 #endif
                 highspeed = !highspeed;
@@ -934,9 +972,18 @@ enum plugin_status plugin_start(const void* parameter)
 #ifdef CUBE_RC_QUIT
             case CUBE_RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case CUBE_QUIT:
 #ifdef CUBE_QUIT_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (lastbutton != CUBE_QUIT_PRE && button != BUTTON_PAD_MENU
+                    && button != BUTTON_PAD_HOME)
+#else
                 if (lastbutton != CUBE_QUIT_PRE)
+#endif
                     break;
 #endif
                 quit = true;

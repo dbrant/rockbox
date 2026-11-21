@@ -218,6 +218,12 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define ACTION2     BUTTON_UP
 #define ACTIONTEXT  "A"
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define QUIT        (BUTTON_SELECT|BUTTON_REPEAT)
+#define ACTION      BUTTON_SELECT
+#define ACTION2     BUTTON_UP
+#define ACTIONTEXT  "SELECT"
+
 #elif !defined(HAVE_TOUCHSCREEN)
 #error No keymap defined!
 #endif
@@ -875,7 +881,23 @@ static int chopGameLoop(void)
         }
 
         move_button=rb->button_status();
+#ifdef HAVE_BLUETOOTH_HID
+        {
+            /* A or B: thrust like ACTION; PS: quit */
+            int pad_btn = rb->button_get(false);
+            /* a press carries the held directions too */
+            bool pad_press = !IS_SYSEVENT(pad_btn) &&
+                             !(pad_btn & (BUTTON_REL|BUTTON_REPEAT));
+            if (move_button & (BUTTON_PAD_A|BUTTON_PAD_B))
+                move_button = ACTION;
+            else
+                move_button &= ~BUTTON_PAD_ALL; /* the target's keys alone */
+            if (pad_press && (pad_btn & BUTTON_PAD_HOME))
+                return PLUGIN_OK;
+            if (pad_btn == QUIT || (pad_press && (pad_btn & BUTTON_PAD_MENU))) {
+#else
         if (rb->button_get(false) == QUIT) {
+#endif
             ret = chopMenu(1);
             if (ret != -1)
                 return PLUGIN_OK;
@@ -884,6 +906,9 @@ static int chopGameLoop(void)
             last_button = BUTTON_NONE;
             move_button = BUTTON_NONE;
         }
+#ifdef HAVE_BLUETOOTH_HID
+        }
+#endif
 
         switch (move_button) {
             case ACTION:

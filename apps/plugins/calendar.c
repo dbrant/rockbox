@@ -452,6 +452,16 @@
 #define CALENDAR_NEXT_MONTH BUTTON_B
 #define CALENDAR_PREV_MONTH BUTTON_Y
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define CALENDAR_QUIT       (BUTTON_SELECT | BUTTON_REPEAT)
+#define CALENDAR_SELECT     (BUTTON_SELECT | BUTTON_UP)
+#define CALENDAR_NEXT_WEEK  BUTTON_DOWN
+#define CALENDAR_PREV_WEEK  BUTTON_UP
+#define CALENDAR_NEXT_DAY   BUTTON_RIGHT
+#define CALENDAR_PREV_DAY   BUTTON_LEFT
+#define CALENDAR_NEXT_MONTH (BUTTON_SELECT | BUTTON_RIGHT)
+#define CALENDAR_PREV_MONTH (BUTTON_SELECT | BUTTON_LEFT)
+
 #else
 #error "No keypad setting."
 #endif
@@ -1121,17 +1131,30 @@ enum plugin_status plugin_start(const void* parameter)
         switch (button)
         {
             case CALENDAR_QUIT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
                 exit = true;
                 break;
 #ifdef CALENDAR_NEXT_MONTH
             case CALENDAR_NEXT_MONTH:
             case CALENDAR_NEXT_MONTH | BUTTON_REPEAT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+            case BUTTON_PAD_R1 | BUTTON_REPEAT:
+#endif
                 next_month(&shown, 0);
                 break;
 #endif
 #ifdef CALENDAR_PREV_MONTH
             case CALENDAR_PREV_MONTH:
             case CALENDAR_PREV_MONTH | BUTTON_REPEAT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+            case BUTTON_PAD_L1 | BUTTON_REPEAT:
+#endif
                 prev_month(&shown, 0);
                 break;
 #endif
@@ -1156,6 +1179,9 @@ enum plugin_status plugin_start(const void* parameter)
                 break;
 
             case CALENDAR_SELECT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
                 any_events(&shown, true);
                 draw_calendar(&shown);
                 break;

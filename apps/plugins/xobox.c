@@ -380,6 +380,15 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define DOWN  BUTTON_DOWN
 #define PAUSE BUTTON_START
 
+#elif CONFIG_KEYPAD == YP3_PAD
+
+#define QUIT  (BUTTON_SELECT | BUTTON_REPEAT)
+#define LEFT  BUTTON_LEFT
+#define RIGHT BUTTON_RIGHT
+#define UP    BUTTON_UP
+#define DOWN  BUTTON_DOWN
+#define PAUSE (BUTTON_SELECT | BUTTON_REL)
+
 #else
 #error "No keymap defined!"
 #endif
@@ -1262,11 +1271,26 @@ static int xobox_loop (void)
             case RIGHT|BUTTON_REPEAT:
                 player.move = MOVE_RT;
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+            case BUTTON_PAD_Y:
+#endif
             case PAUSE:
                 pause = !pause;
                 if (pause)
                     rb->splash (HZ, "Paused");
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_HOME:
+                /* save and quit, like the menu's Quit */
+                rb->splash(HZ, "Saving game...");
+                if (!save_game()) {
+                    rb->splash(HZ, "Failed to save game");
+                }
+                quit = true;
+                break;
+            case BUTTON_PAD_MENU:
+#endif
             case QUIT:
                 if (!pause) {
                     if (xobox_menu(true)) {

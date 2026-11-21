@@ -439,6 +439,18 @@
 #define PACMAN_COIN     BUTTON_X
 #define PACMAN_MENU     BUTTON_VOL_UP
 
+#elif CONFIG_KEYPAD == YP3_PAD
+
+/* Input is polled via button_status(), so no long press: SELECT is both
+   coin and 1UP (hold it on the title screen); the menu is a chord. */
+#define PACMAN_UP       BUTTON_UP
+#define PACMAN_DOWN     BUTTON_DOWN
+#define PACMAN_LEFT     BUTTON_LEFT
+#define PACMAN_RIGHT    BUTTON_RIGHT
+#define PACMAN_1UP      BUTTON_SELECT
+#define PACMAN_COIN     BUTTON_SELECT
+#define PACMAN_MENU     (BUTTON_SELECT | BUTTON_LEFT)
+
 #else
 
 #error Keymap not defined!

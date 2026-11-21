@@ -51,6 +51,14 @@ const struct button_mapping* plugin_contexts[]={
     || (CONFIG_KEYPAD == IPOD_3G_PAD) \
     || (CONFIG_KEYPAD == IPOD_4G_PAD)
 #define ACTION_MENU                     PLA_UP
+#elif CONFIG_KEYPAD == YP3_PAD
+/* PLA_CANCEL is Left, which pla_main_ctx already gives PLA_LEFT: the menu
+ * (and Quit) is a long Select, the counter toggles on a short one */
+#undef ACTION_COUNTER_TOGGLE
+#define ACTION_COUNTER_TOGGLE           PLA_SELECT_REL
+#define ACTION_MENU                     PLA_EXIT
+#define ACTION_SKIN_NEXT                PLA_UP
+#define ACTION_SKIN_NEXT_REPEAT         PLA_UP_REPEAT
 #else
 #define ACTION_MENU                     PLA_CANCEL
 #define ACTION_SKIN_NEXT                PLA_UP

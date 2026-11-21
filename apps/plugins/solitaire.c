@@ -798,6 +798,24 @@ CONFIG_KEYPAD == MROBE500_PAD
 #   define HK_CUR2STACK    "Long A.."
 #   define HK_REM2STACK    "Start"
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#   define SOL_QUIT         (BUTTON_SELECT | BUTTON_REPEAT)
+#   define SOL_UP           BUTTON_UP
+#   define SOL_DOWN         BUTTON_DOWN
+#   define SOL_LEFT         BUTTON_LEFT
+#   define SOL_RIGHT        BUTTON_RIGHT
+#   define SOL_MOVE_PRE     BUTTON_SELECT
+#   define SOL_MOVE         (BUTTON_SELECT | BUTTON_REL)
+#   define SOL_DRAW         (BUTTON_SELECT | BUTTON_DOWN)
+#   define SOL_REM2CUR      (BUTTON_SELECT | BUTTON_LEFT)
+#   define SOL_CUR2STACK    (BUTTON_SELECT | BUTTON_UP)
+#   define SOL_REM2STACK    (BUTTON_SELECT | BUTTON_RIGHT)
+#   define HK_MOVE          "SELECT release"
+#   define HK_DRAW          "SELECT+DOWN"
+#   define HK_REM2CUR       "SELECT+LEFT"
+#   define HK_CUR2STACK     "SELECT+UP"
+#   define HK_REM2STACK     "SELECT+RIGHT"
+
 #else
 #error No keymap defined!
 #endif
@@ -1584,6 +1602,11 @@ static int bouncing_cards( void )
                     return SOLITAIRE_USB;
                 if( button == SOL_QUIT || button == SOL_MOVE )
                     return SOLITAIRE_WIN;
+#ifdef HAVE_BLUETOOTH_HID
+                if( button == BUTTON_PAD_A || button == BUTTON_PAD_MENU )
+                    return SOLITAIRE_WIN;
+#endif
+
             }
         }
     }
@@ -2033,6 +2056,9 @@ static int solitaire( int skipmenu )
                 if( lastbutton != SOL_CUR2STACK_PRE )
                     break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+#endif
                 move_card( deck[cur_card].suit + STACKS_COL, cur_card );
                 break;
 
@@ -2041,6 +2067,9 @@ static int solitaire( int skipmenu )
 #ifdef SOL_MOVE_PRE
                 if( lastbutton != SOL_MOVE_PRE )
                     break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
 #endif
 
                 if( sel_card == NOT_A_CARD )
@@ -2102,6 +2131,9 @@ static int solitaire( int skipmenu )
                 if( lastbutton != SOL_REM2CUR_PRE )
                     break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
+#endif
                 move_card( cur_col, cur_rem );
                 break;
 
@@ -2111,6 +2143,9 @@ static int solitaire( int skipmenu )
 #ifdef SOL_REM2STACK_PRE
                 if( lastbutton != SOL_REM2STACK_PRE )
                     break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R2:
 #endif
                 move_card( deck[cur_rem].suit + COL_NUM, cur_rem );
                 break;
@@ -2137,6 +2172,9 @@ static int solitaire( int skipmenu )
 #ifdef SOL_DRAW_PRE
                 if( lastbutton != SOL_DRAW_PRE )
                     break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
 #endif
                 if( sel_card != NOT_A_CARD )
                 {
@@ -2189,6 +2227,9 @@ static int solitaire( int skipmenu )
             case SOL_RC_QUIT:
 #endif
             case SOL_QUIT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+#endif
                 switch( solitaire_menu(true) )
                 {
                     case MENU_SAVE_AND_QUIT:
@@ -2204,6 +2245,9 @@ static int solitaire( int skipmenu )
 
             case SYS_POWEROFF:
             case SYS_REBOOT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_HOME:
+#endif
                 return SOLITAIRE_SAVE_AND_QUIT;
 
             default:

@@ -258,7 +258,11 @@ static void periodic_tinyfont_draw_string(int x, int y, char * s)
 static const struct button_mapping *plugin_contexts[] = { pla_main_ctx };
 
 #define PERIODIC_KEY_SELECT      PLA_SELECT
+#if CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#define PERIODIC_KEY_MENU        PLA_EXIT
+#else
 #define PERIODIC_KEY_MENU        PLA_CANCEL
+#endif
 #define PERIODIC_KEY_BACK        PLA_LEFT
 #define PERIODIC_KEY_FORWARD     PLA_RIGHT
 #define PERIODIC_KEY_UP          PLA_UP

@@ -529,8 +529,45 @@
 #define  GBN_BUTTON_PLAY            BUTTON_A
 #define  GBN_BUTTON_MENU            BUTTON_POWER
 
+#elif (CONFIG_KEYPAD == YP3_PAD)
+#define  GBN_BUTTON_UP              BUTTON_UP
+#define  GBN_BUTTON_DOWN            BUTTON_DOWN
+#define  GBN_BUTTON_LEFT            BUTTON_LEFT
+#define  GBN_BUTTON_RIGHT           BUTTON_RIGHT
+#define  GBN_BUTTON_RETREAT         (BUTTON_SELECT | BUTTON_LEFT)
+#define  GBN_BUTTON_ADVANCE         (BUTTON_SELECT | BUTTON_RIGHT)
+#define  GBN_BUTTON_PLAY_PRE        BUTTON_SELECT
+#define  GBN_BUTTON_PLAY            (BUTTON_SELECT | BUTTON_REL)
+#define  GBN_BUTTON_MENU            (BUTTON_SELECT | BUTTON_REPEAT)
+
 #else
 #error Unsupported keypad
+#endif
+
+#ifdef HAVE_BLUETOOTH_HID
+/* A game controller: L1/R1 undo/redo, A plays, Y context menu, X next
+   variation, Options the main menu, PS save and quit.  Where the keypad has
+   no such action, the controller button is its only key. */
+#ifdef GBN_BUTTON_RETREAT
+#define  GBN_PAD_RETREAT            BUTTON_PAD_L1
+#else
+#define  GBN_BUTTON_RETREAT         BUTTON_PAD_L1
+#endif
+#ifdef GBN_BUTTON_ADVANCE
+#define  GBN_PAD_ADVANCE            BUTTON_PAD_R1
+#else
+#define  GBN_BUTTON_ADVANCE         BUTTON_PAD_R1
+#endif
+#ifdef GBN_BUTTON_CONTEXT
+#define  GBN_PAD_CONTEXT            BUTTON_PAD_Y
+#else
+#define  GBN_BUTTON_CONTEXT         BUTTON_PAD_Y
+#endif
+#ifdef GBN_BUTTON_NEXT_VAR
+#define  GBN_PAD_NEXT_VAR           BUTTON_PAD_X
+#else
+#define  GBN_BUTTON_NEXT_VAR        BUTTON_PAD_X
+#endif
 #endif
 
 

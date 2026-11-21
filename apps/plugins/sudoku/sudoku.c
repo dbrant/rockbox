@@ -1081,6 +1081,19 @@ enum plugin_status plugin_start(const void* parameter)
         button = rb->button_get(true);
 
         switch(button){
+#ifdef HAVE_BLUETOOTH_HID
+            /* Exit game */
+            case BUTTON_PAD_HOME:
+                if (check_status(&state)) {
+                    rb->splash(HZ*2, "Illegal move!");
+                    /* Ignore any button presses during the splash */
+                    rb->button_clear_queue();
+                } else {
+                    save_sudoku(&state);
+                    exit=true;
+                }
+                break;
+#endif
 #ifdef SUDOKU_BUTTON_QUIT
             /* Exit game */
             case SUDOKU_BUTTON_QUIT:
@@ -1099,6 +1112,9 @@ enum plugin_status plugin_start(const void* parameter)
 #ifdef SUDOKU_BUTTON_ALTTOGGLE
             case SUDOKU_BUTTON_ALTTOGGLE | BUTTON_REPEAT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A | BUTTON_REPEAT:
+#endif
             case SUDOKU_BUTTON_TOGGLE | BUTTON_REPEAT:
                 /* Slow down the repeat speed to 1/3 second */
                 if ((*rb->current_tick-ticks) < (HZ/3)) {
@@ -1107,6 +1123,9 @@ enum plugin_status plugin_start(const void* parameter)
 
 #ifdef SUDOKU_BUTTON_ALTTOGGLE
             case SUDOKU_BUTTON_ALTTOGGLE:
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
 #endif
             case SUDOKU_BUTTON_TOGGLE:
 #ifdef SUDOKU_BUTTON_TOGGLE_PRE
@@ -1137,12 +1156,18 @@ enum plugin_status plugin_start(const void* parameter)
                 break;
 
 #ifdef SUDOKU_BUTTON_TOGGLEBACK
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B | BUTTON_REPEAT:
+#endif
             case SUDOKU_BUTTON_TOGGLEBACK | BUTTON_REPEAT:
                 /* Slow down the repeat speed to 1/3 second */
                 if ((*rb->current_tick-ticks) < (HZ/3)) {
                     break;
                 }
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+#endif
             case SUDOKU_BUTTON_TOGGLEBACK:
                 /* Decrement digit */
                 ticks=*rb->current_tick;
@@ -1248,6 +1273,9 @@ enum plugin_status plugin_start(const void* parameter)
                 if (lastbutton != SUDOKU_BUTTON_MENU_PRE)
                     break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+#endif
                 /* Don't let the user leave a game in a bad state */
                 if (check_status(&state)) {
                     rb->splash(HZ*2, "Illegal move!");
@@ -1274,6 +1302,9 @@ enum plugin_status plugin_start(const void* parameter)
                 }
                 break;
 #ifdef SUDOKU_BUTTON_POSSIBLE
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+#endif
             case SUDOKU_BUTTON_POSSIBLE:
                 /* Toggle current number in the possiblevals structure */
                 if (state.currentboard[state.y][state.x]!='0') {

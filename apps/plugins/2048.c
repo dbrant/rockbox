@@ -98,6 +98,8 @@ static const int BACKGROUND_Y = (BASE_Y-MIN_SPACE);
     || (CONFIG_KEYPAD == IPOD_3G_PAD) \
     || (CONFIG_KEYPAD == IPOD_4G_PAD)
 #define KEY_EXIT PLA_SELECT_REPEAT
+#elif CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#define KEY_EXIT PLA_EXIT
 #else
 #define KEY_EXIT PLA_CANCEL
 #endif

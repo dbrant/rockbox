@@ -815,6 +815,14 @@ void sys_processEvents(struct System* sys)
         return;
     }
 
+#ifdef HAVE_BLUETOOTH_HID
+    /* game controller: PS quits, Options is the pause menu, A fires */
+    if(btn & BUTTON_PAD_HOME)
+        exit(PLUGIN_OK);
+    if(btn & BUTTON_PAD_MENU)
+        btn = BTN_PAUSE;
+#endif
+
     /* handle special keys first */
     switch(btn)
     {
@@ -857,7 +865,11 @@ void sys_processEvents(struct System* sys)
 
     if(released)
     {
+#ifdef HAVE_BLUETOOTH_HID
+        if(released & (BTN_FIRE | BUTTON_PAD_A))
+#else
         if(released & BTN_FIRE)
+#endif
             sys->input.button = false;
         if(released & sys->keymap.up)
             sys->input.dirMask &= ~DIR_UP;
@@ -887,7 +899,11 @@ void sys_processEvents(struct System* sys)
 
     if(pressed)
     {
+#ifdef HAVE_BLUETOOTH_HID
+        if(pressed & (BTN_FIRE | BUTTON_PAD_A))
+#else
         if(pressed & BTN_FIRE)
+#endif
             sys->input.button = true;
         if(pressed & sys->keymap.up)
             sys->input.dirMask |= DIR_UP;

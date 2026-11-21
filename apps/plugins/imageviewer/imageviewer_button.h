@@ -583,6 +583,18 @@
 #define IMGVIEW_MENU        BUTTON_START
 #define IMGVIEW_QUIT        BUTTON_POWER
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define IMGVIEW_ZOOM_PRE        BUTTON_SELECT
+#define IMGVIEW_ZOOM_IN         (BUTTON_SELECT | BUTTON_REL)
+#define IMGVIEW_ZOOM_OUT        (BUTTON_SELECT | BUTTON_REPEAT)
+#define IMGVIEW_UP              BUTTON_UP
+#define IMGVIEW_DOWN            BUTTON_DOWN
+#define IMGVIEW_LEFT            BUTTON_LEFT
+#define IMGVIEW_RIGHT           BUTTON_RIGHT
+#define IMGVIEW_NEXT            (BUTTON_SELECT | BUTTON_RIGHT)
+#define IMGVIEW_PREVIOUS        (BUTTON_SELECT | BUTTON_LEFT)
+#define IMGVIEW_MENU            (BUTTON_SELECT | BUTTON_UP)
+
 #else
 #error No keymap defined!
 #endif

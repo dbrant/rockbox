@@ -402,6 +402,16 @@
 #define AST_RIGHT       BUTTON_RIGHT
 #define AST_FIRE        BUTTON_A
 
+#elif CONFIG_KEYPAD == YP3_PAD
+/* SELECT|REPEAT is autofire, so quit is a long DOWN */
+#define AST_PAUSE       (BUTTON_SELECT | BUTTON_DOWN)
+#define AST_QUIT        (BUTTON_DOWN | BUTTON_REPEAT)
+#define AST_THRUST      BUTTON_UP
+#define AST_HYPERSPACE  BUTTON_DOWN
+#define AST_LEFT        BUTTON_LEFT
+#define AST_RIGHT       BUTTON_RIGHT
+#define AST_FIRE        BUTTON_SELECT
+
 #else
 #error No keymap defined!
 #endif
@@ -2072,10 +2082,17 @@ static int spacerocks_game_loop(void)
         switch(button)
         {
             case(AST_QUIT):
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
                 return PLUGIN_OTHER;
                 break;
 #ifdef AST_PAUSE
             case(AST_PAUSE):
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+#endif
                 if (game_state == PAUSE_MODE)
                     game_state = PLAY_MODE;
                 else if (game_state == PLAY_MODE)
@@ -2107,6 +2124,9 @@ static int spacerocks_game_loop(void)
                 break;
 
             case (AST_HYPERSPACE):
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+#endif
                 if (game_state == PLAY_MODE)
                     hyperspace();
                 /* maybe shield if it gets too hard */
@@ -2114,6 +2134,10 @@ static int spacerocks_game_loop(void)
 
             case (AST_FIRE):
             case (AST_FIRE | BUTTON_REPEAT):
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+            case BUTTON_PAD_A | BUTTON_REPEAT:
+#endif
                 if (game_state == PLAY_MODE)
                 {
                     if (next_missile_count <= 0)

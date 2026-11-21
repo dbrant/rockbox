@@ -47,7 +47,9 @@ src/untangle.c
 #ifndef WIN32
 src/unfinished/group.c
 #endif
-#ifndef WIN32
+/* YP3: the generator's search outgrows the heap (128 KB plugin buffer plus
+ * 125 KB of audio buffer): every preset ends out of memory */
+#if !defined(WIN32) && !defined(YP3_SL6801)
 src/unfinished/slide.c
 #endif
 #ifndef WIN32

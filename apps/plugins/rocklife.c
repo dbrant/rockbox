@@ -73,6 +73,8 @@
     || (CONFIG_KEYPAD == IPOD_3G_PAD) \
     || (CONFIG_KEYPAD == IPOD_4G_PAD)
 #define ROCKLIFE_QUIT       PLA_UP
+#elif CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#define ROCKLIFE_QUIT       PLA_EXIT
 #else
 #define ROCKLIFE_QUIT       PLA_CANCEL
 #endif

@@ -643,6 +643,20 @@ enum {
 #define BJACK_RIGHT         BUTTON_RIGHT
 #define BJACK_LEFT          BUTTON_LEFT
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define BJACK_SELECT_NAME   "SELECT release"
+#define BJACK_STAY_NAME     "SELECT+UP"
+#define BJACK_QUIT_NAME     "Long SELECT"
+#define BJACK_DOUBLE_NAME   "SELECT+DOWN"
+#define BJACK_SELECT        (BUTTON_SELECT | BUTTON_REL)
+#define BJACK_QUIT          (BUTTON_SELECT | BUTTON_REPEAT)
+#define BJACK_STAY          (BUTTON_SELECT | BUTTON_UP)
+#define BJACK_DOUBLEDOWN    (BUTTON_SELECT | BUTTON_DOWN)
+#define BJACK_UP            BUTTON_UP
+#define BJACK_DOWN          BUTTON_DOWN
+#define BJACK_RIGHT         BUTTON_RIGHT
+#define BJACK_LEFT          BUTTON_LEFT
+
 #else
 #error No keymap defined!
 #endif
@@ -1148,8 +1162,16 @@ static unsigned int blackjack_get_yes_no(const char *message) {
             case (BJACK_RIGHT|BUTTON_REPEAT):
                 choice ^= 1;
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case BJACK_SELECT: breakout = true;
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case BJACK_QUIT: breakout = true;
                 choice = 1;
                 break;
@@ -1266,21 +1288,35 @@ static signed int blackjack_get_amount(const char *message,
                 }
                 break;
 #ifdef BJACK_MAX
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+#endif
             case BJACK_MAX :
                 amount = upper_limit;
                 changed = true;
                 break;
 #endif
 #ifdef BJACK_MIN
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+#endif
             case BJACK_MIN :
                 amount = lower_limit;
                 changed = true;
                 break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case BJACK_QUIT:
                 breakout = true;
                 amount = 0;
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case BJACK_SELECT:
                 breakout = true;
                 break;
@@ -1467,6 +1503,14 @@ static unsigned int blackjack_menu(void) {
             case MENU_ATTACHED_USB:
                 return BJ_USB;
 
+#if CONFIG_KEYPAD == YP3_PAD
+            /* Left leaves the menu as Quit does (a hand in play is saved):
+             * the game's long-Select quit comes back to this menu, which
+             * else only redraws on a cancel (TS17 torture 7 step 19) */
+            case GO_TO_PREVIOUS:
+                return resume ? BJ_QUIT : BJ_QUIT_WITHOUT_SAVING;
+#endif
+
             default:
                 break;
         }
@@ -1583,6 +1627,9 @@ static int blackjack(struct game_context* bj) {
             button = rb->button_get(true);
 
             switch(button) {
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_A:
+#endif
                 case BJACK_SELECT:
                     NEXT_CARD = new_card();
                     bj->player_total += NEXT_CARD.value;
@@ -1606,9 +1653,15 @@ static int blackjack(struct game_context* bj) {
                     update_total(bj);
 
                     break;
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_B:
+#endif
                 case BJACK_STAY:
                     bj->end_hand = true;
                     break;
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_Y:
+#endif
                 case BJACK_DOUBLEDOWN:
                     if ((signed int)bj->current_bet * 2 <
                             bj->player_money + 1 &&
@@ -1626,6 +1679,10 @@ static int blackjack(struct game_context* bj) {
                     }
                     break;
 
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_MENU:
+                case BUTTON_PAD_HOME:
+#endif
                 case BJACK_QUIT:
                     resume = true;
                     return BJ_END;

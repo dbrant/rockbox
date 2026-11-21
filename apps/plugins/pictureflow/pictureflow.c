@@ -183,6 +183,15 @@ const struct button_mapping pf_context_buttons[] =
     {PF_CONTEXT,      BUTTON_MENU|BUTTON_REL,     BUTTON_MENU},
     {PF_TRACKLIST,    BUTTON_MENU|BUTTON_REPEAT,  BUTTON_MENU},
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+    /* A, B, L1/R1 (jump) and Y (WPS) come from the core pad map */
+    {PF_MENU,         BUTTON_PAD_MENU,            BUTTON_NONE},
+    {PF_QUIT,         BUTTON_PAD_HOME,            BUTTON_NONE},
+    {PF_CONTEXT,      BUTTON_PAD_X,               BUTTON_NONE},
+    {PF_TRACKLIST,    BUTTON_PAD_VIEW,            BUTTON_NONE},
+    {PF_SORTING_PREV, BUTTON_PAD_L2,              BUTTON_NONE},
+    {PF_SORTING_NEXT, BUTTON_PAD_R2,              BUTTON_NONE},
+#endif
 #if CONFIG_KEYPAD == IAUDIO_M3_PAD
     LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_STD|CONTEXT_REMOTE)
 #else

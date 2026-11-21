@@ -32,6 +32,8 @@
     || (CONFIG_KEYPAD == IPOD_3G_PAD) \
     || (CONFIG_KEYPAD == IPOD_4G_PAD)
 #define DICE_QUIT PLA_UP
+#elif CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#define DICE_QUIT PLA_EXIT
 #else
 #define DICE_QUIT PLA_CANCEL
 #endif
@@ -178,7 +180,11 @@ static void dice_print(struct dices* dice, struct screen* display){
 }
 
 static bool dice_menu(struct dices * dice) {
+#ifdef YP3_SL6801
+    int selection = 0;  /* do_menu opens on it: not on a stray item */
+#else
     int selection;
+#endif
     bool menu_quit = false, result = false;
 
     MENUITEM_STRINGLIST(menu, "Dice", NULL,

@@ -77,6 +77,11 @@ void dynamic_recompile (struct dynarec_block *newblock);
 /* Using #define isn't enough with GCC 4.0.1 */
 void* memcpy(void* dst, const void* src, size_t size) ICODE_ATTR;
 
+#if CONFIG_KEYPAD == YP3_PAD
+/* virtual key set by ev_poll() on a long SELECT */
+#define YP3_ROCKBOY_MENU 0x100
+#endif
+
 struct options {
    int A, B, START, SELECT, MENU;
    int UP, DOWN, LEFT, RIGHT;

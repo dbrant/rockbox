@@ -1538,16 +1538,30 @@ static int choose_key(void)
         int button = rb->button_get_w_tmo(timer_on ? TIMER_INTERVAL : -1);
         switch(button)
         {
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_L1:
+#endif
         case BTN_LEFT:
             if(--sel < 0)
                 sel = options - 1;
             break;
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_R1:
+#endif
         case BTN_RIGHT:
             if(++sel >= options)
                 sel = 0;
             break;
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_B:
+        case BUTTON_PAD_MENU:
+        case BUTTON_PAD_HOME:
+#endif
         case BTN_PAUSE:
             return -1;
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_A:
+#endif
         case BTN_FIRE:
             free_keys(game_keys, options);
 
@@ -1579,8 +1593,32 @@ static int process_input(int tmo, bool do_pausemenu)
     /* weird stuff */
     exit_on_usb(button);
 
+#ifdef HAVE_BLUETOOTH_HID
+    /* pad: Y is the long-press action (spacebar, or right click in
+     * mouse mode), L1/R1 undo/redo */
+    if(button == BUTTON_PAD_Y)
+    {
+        if(mouse_mode)
+        {
+            send_click(RIGHT_BUTTON, true);
+            return 0;
+        }
+        if(input_settings.want_spacebar)
+            return ' ';
+    }
+    else if(button == BUTTON_PAD_L1)
+        return 'u';
+    else if(button == BUTTON_PAD_R1)
+        return 'r';
+#endif
+
     /* See if the button is a long-press. */
+#ifdef HAVE_BLUETOOTH_HID
+    if(accept_input && (button == (BTN_FIRE | BUTTON_REPEAT) ||
+                        button == (BUTTON_PAD_A | BUTTON_REPEAT)))
+#else
     if(accept_input && (button == (BTN_FIRE | BUTTON_REPEAT)))
+#endif
     {
         LOGF("button is long-press, ignoring subsequent input until release");
         /* Ignore repeated long presses. */
@@ -1600,6 +1638,16 @@ static int process_input(int tmo, bool do_pausemenu)
     }
 
     button = rb->button_status();
+
+#ifdef HAVE_BLUETOOTH_HID
+    /* fold the pad into the target's own buttons: A fires, Options
+     * and PS are pause/quit */
+    if(button & (BUTTON_PAD_MENU | BUTTON_PAD_HOME))
+        button = BTN_PAUSE;
+    else if(button & BUTTON_PAD_A)
+        button |= BTN_FIRE;
+    button &= ~BUTTON_PAD_ALL;
+#endif
 
 #ifdef HAVE_ADJUSTABLE_CPU_FREQ
     rb->cpu_boost(true);
@@ -2034,11 +2082,18 @@ static void zoom(void)
             case BTN_RIGHT | BUTTON_REPEAT:
                 zoom_x += PAN_X; /* clamped later */
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case BTN_PAUSE:
                 zoom_enabled = false;
                 sfree(zoom_fb);
                 fix_size();
                 return;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A | BUTTON_REL:
+#endif
             case BTN_FIRE | BUTTON_REL:
                 /* state change to interaction mode */
                 view_mode = false;
@@ -2202,10 +2257,18 @@ static void int_chooser(config_item *cfgs, int idx, int val)
         case BTN_LEFT | BUTTON_REPEAT:
             d = -1;
             break;
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_A:
+#endif
         case BTN_FIRE:
             /* config is already set */
             rb->lcd_scroll_stop();
             return;
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_B:
+        case BUTTON_PAD_MENU:
+        case BUTTON_PAD_HOME:
+#endif
         case BTN_PAUSE:
             if(val != old_val)
                 rb->splash(HZ, "Canceled.");

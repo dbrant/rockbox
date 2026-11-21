@@ -30,7 +30,7 @@
 enum plugin_status plugin_start(const void* file)
 {
     int button;
-#if defined(TV_AUTOSCROLL_PRE)
+#if defined(TV_AUTOSCROLL_PRE) || defined(TV_MENU_PRE)
     int lastbutton = BUTTON_NONE;
 #endif
     bool autoscroll = false;
@@ -80,6 +80,14 @@ enum plugin_status plugin_start(const void* file)
 
         switch (button) {
             case TV_MENU:
+#ifdef TV_MENU_PRE
+                if (lastbutton != TV_MENU_PRE)
+                    break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A | BUTTON_REL:
+            case BUTTON_PAD_MENU:
+#endif
 #ifdef TV_MENU2
             case TV_MENU2:
 #endif
@@ -215,6 +223,33 @@ enum plugin_status plugin_start(const void* file)
                 tv_add_or_remove_bookmark();
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+                autoscroll = !autoscroll;
+                break;
+
+            case BUTTON_PAD_X:
+                tv_add_or_remove_bookmark();
+                break;
+
+            case BUTTON_PAD_L1:
+            case BUTTON_PAD_L1 | BUTTON_REPEAT:
+                tv_scroll_up(TV_VERTICAL_SCROLL_PAGE);
+                old_tick = *rb->current_tick;
+                break;
+
+            case BUTTON_PAD_R1:
+            case BUTTON_PAD_R1 | BUTTON_REPEAT:
+                tv_scroll_down(TV_VERTICAL_SCROLL_PAGE);
+                old_tick = *rb->current_tick;
+                break;
+
+            case BUTTON_PAD_B:
+            case BUTTON_PAD_HOME:
+                done = true;
+                break;
+#endif
+
             default:
                 exit_on_usb(button);
                 display_update = false;
@@ -222,7 +257,7 @@ enum plugin_status plugin_start(const void* file)
         }
         if (button != BUTTON_NONE)
         {
-#if defined(TV_AUTOSCROLL_PRE)
+#if defined(TV_AUTOSCROLL_PRE) || defined(TV_MENU_PRE)
             lastbutton = button;
 #endif
             rb->yield();

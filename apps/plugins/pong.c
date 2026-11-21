@@ -336,6 +336,14 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define PONG_RIGHT_UP   BUTTON_X
 #define PONG_RIGHT_DOWN BUTTON_Y
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define PONG_QUIT       (BUTTON_SELECT | BUTTON_REPEAT)
+#define PONG_PAUSE      (BUTTON_SELECT | BUTTON_REL)
+#define PONG_LEFT_UP    BUTTON_UP
+#define PONG_LEFT_DOWN  BUTTON_DOWN
+#define PONG_RIGHT_UP   BUTTON_LEFT
+#define PONG_RIGHT_DOWN BUTTON_RIGHT
+
 #elif CONFIG_KEYPAD == N3DS_PAD
 #define PONG_QUIT       BUTTON_BACK
 #define PONG_PAUSE      BUTTON_SELECT
@@ -699,6 +707,16 @@ static int keys(struct pong *p)
 #endif
         )
             return 0; /* exit game NOW */
+
+#ifdef HAVE_BLUETOOTH_HID
+        if(key == BUTTON_PAD_MENU || key == BUTTON_PAD_HOME)
+            return 0; /* exit game NOW */
+#endif
+
+#if defined(HAVE_BLUETOOTH_HID) && defined(PONG_PAUSE)
+        if(key == BUTTON_PAD_A)
+            pause = !pause;
+#endif
 
 #ifdef PONG_PAUSE
         if(key == PONG_PAUSE)

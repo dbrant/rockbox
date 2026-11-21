@@ -156,6 +156,9 @@ const struct image_decoder *load_decoder(struct loader_info *loader_info)
     }
 
     if (lc_hdr->api_version != IMGDEC_API_VERSION ||
+#ifdef HAVE_EXACT_MODULE_API
+        lc_hdr->build_id != MODULE_BUILD_ID ||
+#endif
         hdr->img_api_size > sizeof(struct imgdec_api) ||
         hdr->plugin_api_version != PLUGIN_API_VERSION ||
         hdr->plugin_api_size > sizeof(struct plugin_api))

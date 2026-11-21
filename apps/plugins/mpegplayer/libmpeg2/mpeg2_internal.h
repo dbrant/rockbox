@@ -116,7 +116,12 @@ struct mpeg2_decoder_s
     /* sequence header stuff */
     uint16_t * quantizer_matrix[4];
     uint16_t (* chroma_quantizer[2])[64];
+#ifdef MPEG2_420_ONLY
+    /* 4:2:0 only (the video player): chroma takes the luma matrices */
+    uint16_t quantizer_prescale[2][32][64];
+#else
     uint16_t quantizer_prescale[4][32][64];
+#endif
 
     /* The width and height of the picture snapped to macroblock units */
     int width;

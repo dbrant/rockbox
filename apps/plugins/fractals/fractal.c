@@ -62,6 +62,16 @@ static int button_yield(void *ctx)
 #ifdef FRACTAL_ZOOM_IN2
         case FRACTAL_ZOOM_IN2:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_MENU:
+        case BUTTON_PAD_HOME:
+        case BUTTON_PAD_L1:
+        case BUTTON_PAD_R1:
+        case BUTTON_PAD_A:
+        case BUTTON_PAD_L2:
+        case BUTTON_PAD_R2:
+        case BUTTON_PAD_Y:
+#endif
 #ifdef FRACTAL_ZOOM_IN_PRE
         case FRACTAL_ZOOM_IN_PRE:
 #endif
@@ -95,7 +105,8 @@ enum plugin_status plugin_start(const void* parameter)
 #if defined(FRACTAL_ZOOM_OUT_PRE) || \
     defined(FRACTAL_ZOOM_IN_PRE) || \
     defined(FRACTAL_PRECISION_DEC_PRE) || \
-    defined(FRACTAL_PRECISION_INC_PRE)
+    defined(FRACTAL_PRECISION_INC_PRE) || \
+    defined(FRACTAL_RESET_PRE)
     long lastbutton = BUTTON_NONE;
 #endif
     int redraw = REDRAW_FULL;
@@ -165,12 +176,19 @@ enum plugin_status plugin_start(const void* parameter)
         case FRACTAL_RC_QUIT:
 #endif
         case FRACTAL_QUIT:
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_MENU:
+        case BUTTON_PAD_HOME:
+#endif
             return PLUGIN_OK;
 
         case FRACTAL_ZOOM_OUT:
 #ifdef FRACTAL_ZOOM_OUT_PRE
             if (lastbutton != FRACTAL_ZOOM_OUT_PRE)
                 break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_L1:
 #endif
             if (!ops->zoom(-1))
                 redraw = REDRAW_FULL;
@@ -184,6 +202,10 @@ enum plugin_status plugin_start(const void* parameter)
 #endif
 #ifdef FRACTAL_ZOOM_IN2
         case FRACTAL_ZOOM_IN2:
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_R1:
+        case BUTTON_PAD_A:
 #endif
             if (!ops->zoom(1))
                 redraw = REDRAW_FULL;
@@ -226,6 +248,9 @@ enum plugin_status plugin_start(const void* parameter)
             if (lastbutton != FRACTAL_PRECISION_DEC_PRE)
                 break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_L2:
+#endif
             if (ops->precision(-1))
                 redraw = REDRAW_FULL_OVERLAY;
 
@@ -236,12 +261,22 @@ enum plugin_status plugin_start(const void* parameter)
             if (lastbutton != FRACTAL_PRECISION_INC_PRE)
                 break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_R2:
+#endif
             if (ops->precision(+1))
                 redraw = REDRAW_FULL_OVERLAY;
 
             break;
 
         case FRACTAL_RESET:
+#ifdef FRACTAL_RESET_PRE
+            if (lastbutton != FRACTAL_RESET_PRE)
+                break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_Y:
+#endif
             ops->init();
             redraw = REDRAW_FULL;
             break;
@@ -253,7 +288,8 @@ enum plugin_status plugin_start(const void* parameter)
 #if defined(FRACTAL_ZOOM_OUT_PRE) || \
     defined(FRACTAL_ZOOM_IN_PRE) || \
     defined(FRACTAL_PRECISION_DEC_PRE) || \
-    defined(FRACTAL_PRECISION_INC_PRE)
+    defined(FRACTAL_PRECISION_INC_PRE) || \
+    defined(FRACTAL_RESET_PRE)
         if (button != BUTTON_NONE)
             lastbutton = button;
 #endif

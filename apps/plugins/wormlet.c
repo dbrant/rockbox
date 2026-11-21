@@ -438,6 +438,16 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define BTN_QUIT        BUTTON_POWER
 #define BTN_STOPRESET   BUTTON_SELECT
 
+#elif CONFIG_KEYPAD == YP3_PAD
+
+#define BTN_DIR_UP      BUTTON_UP
+#define BTN_DIR_DOWN    BUTTON_DOWN
+#define BTN_DIR_LEFT    BUTTON_LEFT
+#define BTN_DIR_RIGHT   BUTTON_RIGHT
+#define BTN_STARTPAUSE  BUTTON_SELECT
+#define BTN_QUIT        (BUTTON_SELECT | BUTTON_REPEAT)
+#define BTN_STOPRESET   (BUTTON_SELECT | BUTTON_DOWN)
+
 #else
 #error No keymap defined!
 #endif
@@ -1847,9 +1857,15 @@ static int run(void)
 #endif
 
         switch (button) {
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case BTN_STARTPAUSE:
                 paused = !paused;
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
+#endif
             case BTN_STOPRESET:
                 if (paused)
                     return 1; /* restart game */
@@ -1858,6 +1874,10 @@ static int run(void)
                 break;
 #ifdef BTN_RC_QUIT
             case BTN_RC_QUIT:
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
 #endif
             case BTN_QUIT:
                 return 2;  /* back to menu */

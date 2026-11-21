@@ -321,6 +321,14 @@
 #define STOPWATCH_SCROLL_UP     BUTTON_UP
 #define STOPWATCH_SCROLL_DOWN   BUTTON_DOWN
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define STOPWATCH_QUIT          (BUTTON_SELECT | BUTTON_REPEAT)
+#define STOPWATCH_START_STOP    (BUTTON_SELECT | BUTTON_REL)
+#define STOPWATCH_RESET_TIMER   BUTTON_LEFT
+#define STOPWATCH_LAP_TIMER     BUTTON_RIGHT
+#define STOPWATCH_SCROLL_UP     BUTTON_UP
+#define STOPWATCH_SCROLL_DOWN   BUTTON_DOWN
+
 #else
 #error No keymap defined!
 #endif
@@ -527,12 +535,19 @@ enum plugin_status plugin_start(const void* parameter)
 #ifdef STOPWATCH_RC_QUIT
             case STOPWATCH_RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case STOPWATCH_QUIT:
                   save_stopwatch();
                   done = true;
                   break;
 
             /* Stop/Start toggle */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case STOPWATCH_START_STOP:
                  counting = ! counting;
                  if (counting)
@@ -548,6 +563,9 @@ enum plugin_status plugin_start(const void* parameter)
                  break;
 
             /* Reset timer */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
+#endif
             case STOPWATCH_RESET_TIMER:
                  if (!counting)
                  {
@@ -559,6 +577,9 @@ enum plugin_status plugin_start(const void* parameter)
                  break;
 
             /* Lap timer */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+#endif
             case STOPWATCH_LAP_TIMER:
                  /*check if we're timing, and start if not*/
                  if (counting)
@@ -576,6 +597,9 @@ enum plugin_status plugin_start(const void* parameter)
                  break;
 
             /* Scroll Lap timer up */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+#endif
             case STOPWATCH_SCROLL_UP:
                  if (lap_scroll > 0)
                  {
@@ -585,6 +609,9 @@ enum plugin_status plugin_start(const void* parameter)
                  break;
 
             /* Scroll Lap timer down */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+#endif
             case STOPWATCH_SCROLL_DOWN:
                  if ((lap_scroll < curr_lap - lines) &&
                      (lap_scroll < (MAX_LAPS - lines)) )

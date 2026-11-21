@@ -506,6 +506,20 @@ static void setoptions (void)
         options.SELECT = BUTTON_SELECT;
         options.MENU   = BUTTON_POWER;
 
+#elif CONFIG_KEYPAD == YP3_PAD
+        /* Five keys only: B, START and SELECT are unmapped (remap them in
+         * the menu, e.g. onto the d-pad); long SELECT opens the menu. */
+        options.UP     = BUTTON_UP;
+        options.DOWN   = BUTTON_DOWN;
+        options.LEFT   = BUTTON_LEFT;
+        options.RIGHT  = BUTTON_RIGHT;
+
+        options.A      = BUTTON_SELECT;
+        options.B      = 0;
+        options.START  = 0;
+        options.SELECT = 0;
+        options.MENU   = YP3_ROCKBOY_MENU;
+
 #else
 #error No Keymap Defined!
 #endif

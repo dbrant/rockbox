@@ -14,7 +14,14 @@ CHESSBOX_OBJ := $(call c2obj, $(CHESSBOX_SRC))
 
 OTHER_SRC += $(CHESSBOX_SRC)
 
-ifeq ($(findstring YES, $(call preprocess, $(APPSDIR)/plugins/BUILD_OVERLAY)), YES)
+# yp3: plugin buffer is not at a fixed address; the big engine tables come
+# from the audio buffer instead, so build a normal .rock
+CHESSBOX_OVERLAY := $(findstring YES, $(call preprocess, $(APPSDIR)/plugins/BUILD_OVERLAY))
+ifeq ($(MODELNAME), yp3)
+    CHESSBOX_OVERLAY :=
+endif
+
+ifeq ($(CHESSBOX_OVERLAY), YES)
     ### lowmem targets
     ROCKS += $(CHESSBOX_OBJDIR)/chessbox.ovl
     CHESSBOX_OUTLDS = $(CHESSBOX_OBJDIR)/chessbox.link

@@ -409,6 +409,16 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define HK_SELECT "A"
 #define HK_CANCEL "POWER"
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define JEWELS_UP       BUTTON_UP
+#define JEWELS_DOWN     BUTTON_DOWN
+#define JEWELS_LEFT     BUTTON_LEFT
+#define JEWELS_RIGHT    BUTTON_RIGHT
+#define JEWELS_SELECT   (BUTTON_SELECT | BUTTON_REL)
+#define JEWELS_CANCEL   (BUTTON_SELECT | BUTTON_REPEAT)
+#define HK_SELECT       "SELECT release"
+#define HK_CANCEL       "Long SELECT"
+
 #else
 #error No keymap defined!
 #endif
@@ -1633,12 +1643,19 @@ static int jewels_main(struct game_context* bj) {
                 break;
 #endif
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:            /* toggle selected */
+#endif
             case JEWELS_SELECT:           /* toggle selected */
                 selected = !selected;
                 break;
 
 #ifdef JEWELS_RC_CANCEL
             case JEWELS_RC_CANCEL:
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:         /* game menu */
+            case BUTTON_PAD_HOME:
 #endif
             case JEWELS_CANCEL:           /* end game */
                 if (jewels_game_menu(bj, true)!=0)

@@ -487,6 +487,15 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define SNAKE2_PLAYPAUSE    BUTTON_START
 #define SNAKE2_PLAYPAUSE_TEXT "START"
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define SNAKE2_LEFT         BUTTON_LEFT
+#define SNAKE2_RIGHT        BUTTON_RIGHT
+#define SNAKE2_UP           BUTTON_UP
+#define SNAKE2_DOWN         BUTTON_DOWN
+#define SNAKE2_QUIT         (BUTTON_SELECT | BUTTON_REPEAT)
+#define SNAKE2_PLAYPAUSE    (BUTTON_SELECT | BUTTON_REL)
+#define SNAKE2_PLAYPAUSE_TEXT "SELECT"
+
 #else
 #error No keymap defined!
 #endif
@@ -1187,6 +1196,10 @@ static void die (void)
         button=rb->button_get(true);
         switch(button)
         {
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A | BUTTON_REL:
+            case BUTTON_PAD_Y:
+#endif
             case SNAKE2_PLAYPAUSE:
                 done = true;
                 break;
@@ -1405,6 +1418,10 @@ static void game_pause (void)
         button = rb->button_get(true);
         switch (button)
         {
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A | BUTTON_REL:
+            case BUTTON_PAD_Y:
+#endif
             case SNAKE2_PLAYPAUSE:
                 redraw();
                 redraw_snake();
@@ -1415,6 +1432,11 @@ static void game_pause (void)
 
 #ifdef SNAKE2_RC_QUIT
             case SNAKE2_RC_QUIT:
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
 #endif
             case SNAKE2_QUIT:
                 dead = 1;
@@ -1502,10 +1524,18 @@ static void game (void)
 #ifdef SNAKE2_RC_QUIT
             case SNAKE2_RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case SNAKE2_QUIT:
                 quit = 1;
                 return;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A | BUTTON_REL:
+            case BUTTON_PAD_Y:
+#endif
             case SNAKE2_PLAYPAUSE:
                 game_pause();
                 break;
@@ -1564,10 +1594,19 @@ static void select_maze(void)
         button = rb->button_get(true);
         switch (button)
         {
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A | BUTTON_REL:
+            case BUTTON_PAD_B:
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case SNAKE2_QUIT:
             case SNAKE2_PLAYPAUSE:
                 return;
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+#endif
             case SNAKE2_UP:
             case SNAKE2_RIGHT:
                 if(level_from_file < num_levels)
@@ -1577,6 +1616,9 @@ static void select_maze(void)
                 load_level( level_from_file );
                 redraw();
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+#endif
             case SNAKE2_DOWN:
             case SNAKE2_LEFT:
                 if(level_from_file > 0)

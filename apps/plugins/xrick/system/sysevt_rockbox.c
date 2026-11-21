@@ -91,6 +91,13 @@ void sysevt_poll(void)
     }
 #endif
 
+#ifdef HAVE_BLUETOOTH_HID
+    if (currentKey & (BUTTON_PAD_MENU | BUTTON_PAD_HOME))
+    {
+        sysmenu_exec();
+    }
+#endif
+
 #ifdef XRICK_BTN_PAUSE
     checkKey(currentKey, XRICK_BTN_PAUSE, Control_PAUSE);
 #endif
@@ -104,6 +111,18 @@ void sysevt_poll(void)
     checkKey(currentKey, XRICK_BTN_RIGHT, Control_RIGHT);
 
     checkKey(currentKey, XRICK_BTN_FIRE, Control_FIRE);
+
+#ifdef HAVE_BLUETOOTH_HID
+    /* controller: A stick, B shoot (up+fire), X bomb (down+fire), Y pause */
+    if (currentKey & BUTTON_PAD_A)
+        control_set(Control_FIRE);
+    if (currentKey & BUTTON_PAD_B)
+        control_set(Control_UP | Control_FIRE);
+    if (currentKey & BUTTON_PAD_X)
+        control_set(Control_DOWN | Control_FIRE);
+    if (currentKey & BUTTON_PAD_Y)
+        control_set(Control_PAUSE);
+#endif
 
 #ifdef XRICK_BTN_UPLEFT
     if (!control_test(Control_UP | Control_LEFT))

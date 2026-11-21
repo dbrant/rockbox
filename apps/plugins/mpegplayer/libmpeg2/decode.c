@@ -32,7 +32,13 @@
 #include "attributes.h"
 #include "mpeg2_internal.h"
 
+/* The chunk buffer holds a picture's data: the video player, which
+ * plays small pictures, has it smaller */
+#ifdef MPEG2_CHUNK_SIZE
+#define BUFFER_SIZE MPEG2_CHUNK_SIZE
+#else
 #define BUFFER_SIZE (1194 * 1024)
+#endif
 
 #if defined(CPU_COLDFIRE) || (defined(CPU_ARM) && ARM_ARCH >= 6)
 /* twice as large as on other targets because coldfire uses

@@ -1326,6 +1326,19 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define CHIP8_KEY9 BUTTON_START
 #define CHIP8_KEYA BUTTON_X
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define CHIP8_OFF  (BUTTON_SELECT | BUTTON_REPEAT)
+#define CHIP8_KEY1 BUTTON_UP
+#define CHIP8_KEY2 BUTTON_RIGHT
+#define CHIP8_KEY3 BUTTON_DOWN
+#define CHIP8_KEY4 BUTTON_LEFT
+#define CHIP8_KEY5 BUTTON_SELECT
+#define CHIP8_KEY6 (BUTTON_UP | BUTTON_RIGHT)
+#define CHIP8_KEY7 (BUTTON_RIGHT | BUTTON_DOWN)
+#define CHIP8_KEY8 (BUTTON_DOWN | BUTTON_LEFT)
+#define CHIP8_KEY9 (BUTTON_LEFT | BUTTON_UP)
+#define CHIP8_KEYA (BUTTON_UP | BUTTON_SELECT)
+
 #elif CONFIG_KEYPAD == SHANLING_Q1_PAD || CONFIG_KEYPAD == HIBY_R3PROII_PAD || CONFIG_KEYPAD == HIDIZS_AP80MAX_PAD
 /* use touchscreen */
 
@@ -1470,6 +1483,17 @@ static void chip8_keyboard(void)
 #ifdef CHIP8_KEYA
     case CHIP8_KEYA:                chip8_virtual_keys[10] = 1; break;
     case CHIP8_KEYA | BUTTON_REL:   chip8_virtual_keys[10] = 0; break;
+#endif
+
+#ifdef HAVE_BLUETOOTH_HID
+    case BUTTON_PAD_MENU:                                /* Options, PS: abort */
+    case BUTTON_PAD_HOME:
+        chip8_running = 0;
+        break;
+    case BUTTON_PAD_A:              chip8_virtual_keys[5] = 1; break;
+    case BUTTON_PAD_A | BUTTON_REL: chip8_virtual_keys[5] = 0; break;
+    case BUTTON_PAD_X:              chip8_virtual_keys[10] = 1; break;
+    case BUTTON_PAD_X | BUTTON_REL: chip8_virtual_keys[10] = 0; break;
 #endif
 
     default:

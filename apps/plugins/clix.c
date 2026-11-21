@@ -340,6 +340,14 @@
 #define CLIX_BUTTON_UP          BUTTON_UP
 #define CLIX_BUTTON_DOWN        BUTTON_DOWN
 
+#elif (CONFIG_KEYPAD == YP3_PAD)
+#define CLIX_BUTTON_QUIT        (BUTTON_SELECT|BUTTON_REPEAT)
+#define CLIX_BUTTON_LEFT        BUTTON_LEFT
+#define CLIX_BUTTON_RIGHT       BUTTON_RIGHT
+#define CLIX_BUTTON_CLICK       (BUTTON_SELECT|BUTTON_REL)
+#define CLIX_BUTTON_UP          BUTTON_UP
+#define CLIX_BUTTON_DOWN        BUTTON_DOWN
+
 #else
 #error "no keymap"
 #endif
@@ -993,11 +1001,18 @@ static int clix_handle_game(struct clix_game_state_t* state)
                     clix_move_cursor(state, true);
                 break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_A:
+#endif
                 case CLIX_BUTTON_CLICK:
                     if (clix_click(state) == 1)
                         return 1;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_MENU:
+                case BUTTON_PAD_HOME:
+#endif
                 case CLIX_BUTTON_QUIT:
                     if (clix_menu(state, 1) != 0) {
                         rb->button_clear_queue();

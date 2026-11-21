@@ -69,6 +69,12 @@
 
 /* Use either all but code & undo of the plugin buffer for level data
  * or 128k, which ever is less */
+#if CONFIG_KEYPAD == YP3_PAD
+/* Keep the YP3 module small. */
+#define MAX_LEVEL_DATA       0x1000
+#define MAX_LEVELS           MAX_LEVEL_DATA/70
+#define MAX_UNDOS            0x1000
+#else
 #if PLUGIN_BUFFER_SIZE - CODE_AND_UNDO_SIZE < 0x20000
 #define MAX_LEVEL_DATA       (PLUGIN_BUFFER_SIZE - CODE_AND_UNDO_SIZE)
 #else
@@ -83,6 +89,7 @@
 #define MAX_UNDOS            0x10000
 #else
 #define MAX_UNDOS            (PLUGIN_BUFFER_SIZE - MAX_LEVEL_DATA - CODE_SIZE)
+#endif
 #endif
 
 /* Move/push definitions for undo */
@@ -745,6 +752,26 @@
 #define SOKOBAN_PAUSE        BUTTON_START
 #define BUTTON_SAVE          BUTTON_A
 #define BUTTON_SAVE_NAME     "A"
+
+#elif CONFIG_KEYPAD == YP3_PAD
+#define SOKOBAN_LEFT          BUTTON_LEFT
+#define SOKOBAN_RIGHT         BUTTON_RIGHT
+#define SOKOBAN_UP            BUTTON_UP
+#define SOKOBAN_DOWN          BUTTON_DOWN
+#define SOKOBAN_MENU          (BUTTON_SELECT | BUTTON_REPEAT)
+#define SOKOBAN_MENU_PRE      BUTTON_SELECT
+#define SOKOBAN_MENU_NAME     "Long SELECT"
+#define SOKOBAN_UNDO          (BUTTON_SELECT | BUTTON_REL)
+#define SOKOBAN_UNDO_PRE      BUTTON_SELECT
+#define SOKOBAN_UNDO_NAME     "SELECT release"
+#define SOKOBAN_REDO          (BUTTON_SELECT | BUTTON_LEFT)
+#define SOKOBAN_REDO_NAME     "SELECT+LEFT"
+#define SOKOBAN_LEVEL_REPEAT  (BUTTON_SELECT | BUTTON_RIGHT)
+#define SOKOBAN_LEVEL_REPEAT_NAME "SELECT+RIGHT"
+#define SOKOBAN_PAUSE         (BUTTON_SELECT | BUTTON_UP)
+#define SOKOBAN_PAUSE_NAME    "SELECT+UP"
+#define BUTTON_SAVE           (BUTTON_SELECT | BUTTON_DOWN)
+#define BUTTON_SAVE_NAME      "SELECT+DOWN"
 
 #else
 #error No keymap defined!
@@ -1544,11 +1571,19 @@ static bool load(char *filename, bool silent)
 
                 while ((button = rb->button_get(false)) || paused) {
                     switch (button) {
+#ifdef HAVE_BLUETOOTH_HID
+                        case BUTTON_PAD_B:
+                        case BUTTON_PAD_MENU:
+                        case BUTTON_PAD_HOME:
+#endif
                         case SOKOBAN_QUIT_REPLAY:
                             /* Pretend the level is complete so we'll quit */
                             current_info.level.boxes_to_go = 0;
                             return true;
 
+#ifdef HAVE_BLUETOOTH_HID
+                        case BUTTON_PAD_A:
+#endif
                         case SOKOBAN_PAUSE:
                             /* Toggle pause state */
                             paused = !paused;
@@ -1805,6 +1840,9 @@ static bool sokoban_loop(void)
 #ifdef SOKOBAN_RC_MENU
             case SOKOBAN_RC_MENU:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+#endif
                 switch (sokoban_menu()) {
                     case 5: /* Quit */
                     case 6: /* Save & quit */
@@ -1819,6 +1857,10 @@ static bool sokoban_loop(void)
                     break;
 #else       /* repeat can't work here for Ondio, iPod, et al */
             case SOKOBAN_UNDO | BUTTON_REPEAT:
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+            case BUTTON_PAD_Y | BUTTON_REPEAT:
 #endif
                 undo();
                 rb->lcd_clear_display();
@@ -1865,6 +1907,42 @@ static bool sokoban_loop(void)
                 init_undo();
                 draw_level();
                 break;
+#endif
+
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
+            case BUTTON_PAD_X | BUTTON_REPEAT:
+                moved = redo();
+                rb->lcd_clear_display();
+                update_screen();
+                break;
+
+            case BUTTON_PAD_R1:
+                /* next level */
+                init_undo();
+                if (current_info.level.index + 1 < current_info.max_level)
+                    current_info.level.index++;
+
+                draw_level();
+                break;
+
+            case BUTTON_PAD_L1:
+                /* previous level */
+                init_undo();
+                if (current_info.level.index > 0)
+                    current_info.level.index--;
+
+                draw_level();
+                break;
+
+            case BUTTON_PAD_B:
+                /* same level */
+                init_undo();
+                draw_level();
+                break;
+
+            case BUTTON_PAD_HOME:
+                return PLUGIN_OK;
 #endif
 
             case SOKOBAN_LEFT:

@@ -241,6 +241,9 @@ bool collect_dir_stats(struct dir_stats *stats, bool (*id3_cb)(const char*))
     static unsigned long last_displayed, last_get_action;
     struct dirent* entry;
     int dirlen = rb->strlen(stats->dirname);
+#ifdef PLUGIN_DIRWALK_REOPEN
+    int index = 0; /* entries read so far, to find the place again */
+#endif
     DIR* dir =  rb->opendir(stats->dirname);
     if (!dir)
     {
@@ -253,6 +256,9 @@ bool collect_dir_stats(struct dir_stats *stats, bool (*id3_cb)(const char*))
     /* walk through the directory content */
     while(result && (0 != (entry = rb->readdir(dir))))
     {
+#ifdef PLUGIN_DIRWALK_REOPEN
+        index++;
+#endif
         struct dirinfo info = rb->dir_get_info(dir, entry);
         if (info.attribute & ATTR_DIRECTORY)
         {
@@ -272,7 +278,24 @@ bool collect_dir_stats(struct dir_stats *stats, bool (*id3_cb)(const char*))
                     last_displayed = *(rb->current_tick);
                 }
             }
+#ifdef PLUGIN_DIRWALK_REOPEN
+            /* few dir handles: close this one while the subtree is walked,
+               then reopen it at the same place */
+            rb->closedir(dir);
             result = collect_dir_stats(stats, id3_cb); /* recursion */
+            stats->dirname[dirlen] = '\0';
+            dir = rb->opendir(dirlen ? stats->dirname : "/");
+            if (!dir)
+            {
+                rb->splashf(HZ*2, "open error: %s", stats->dirname);
+                return false;
+            }
+            for (int i = 0; i < index; i++)
+                if (!rb->readdir(dir))
+                    break;
+#else
+            result = collect_dir_stats(stats, id3_cb); /* recursion */
+#endif
         }
         else if (!id3_cb)
         {

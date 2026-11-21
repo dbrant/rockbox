@@ -534,6 +534,19 @@
 #define FLIPIT_STEP_BY_STEP BUTTON_X
 #define FLIPIT_TOGGLE       BUTTON_A
 
+#elif CONFIG_KEYPAD == YP3_PAD
+
+#define FLIPIT_LEFT         BUTTON_LEFT
+#define FLIPIT_RIGHT        BUTTON_RIGHT
+#define FLIPIT_UP           BUTTON_UP
+#define FLIPIT_DOWN         BUTTON_DOWN
+#define FLIPIT_QUIT         (BUTTON_SELECT | BUTTON_REPEAT)
+#define FLIPIT_SHUFFLE      (BUTTON_SELECT | BUTTON_LEFT)
+#define FLIPIT_SOLVE        (BUTTON_SELECT | BUTTON_UP)
+#define FLIPIT_STEP_BY_STEP (BUTTON_SELECT | BUTTON_RIGHT)
+#define FLIPIT_TOGGLE_PRE   BUTTON_SELECT
+#define FLIPIT_TOGGLE       (BUTTON_SELECT | BUTTON_REL)
+
 #else
 #error No keymap defined!
 #endif
@@ -732,18 +745,32 @@ static bool flipit_loop(void)
 #ifdef FLIPIT_RC_QUIT
             case FLIPIT_RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case FLIPIT_QUIT:
                 /* get out of here */
                 return PLUGIN_OK;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+#endif
             case FLIPIT_SHUFFLE:
                 /* mix up the pieces */
                 flipit_init();
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
+#endif
             case FLIPIT_SOLVE:
 #ifdef FLIPIT_SOLVE_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (lastbutton != FLIPIT_SOLVE_PRE && button != BUTTON_PAD_X)
+#else
                 if (lastbutton != FLIPIT_SOLVE_PRE)
+#endif
                     break;
 #endif
                 /* solve the puzzle */
@@ -760,9 +787,16 @@ static bool flipit_loop(void)
                 }
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+#endif
             case FLIPIT_STEP_BY_STEP:
 #ifdef FLIPIT_STEP_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (lastbutton != FLIPIT_STEP_PRE && button != BUTTON_PAD_R1)
+#else
                 if (lastbutton != FLIPIT_STEP_PRE)
+#endif
                     break;
 #endif
                 if (!flipit_finished()) {
@@ -778,9 +812,16 @@ static bool flipit_loop(void)
                 }
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case FLIPIT_TOGGLE:
 #ifdef FLIPIT_TOGGLE_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (lastbutton != FLIPIT_TOGGLE_PRE && button != BUTTON_PAD_A)
+#else
                 if (lastbutton != FLIPIT_TOGGLE_PRE)
+#endif
                     break;
 #endif
                 /* toggle the pieces */

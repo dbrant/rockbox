@@ -47,7 +47,13 @@ GREY_INFO_STRUCT
 #endif
 
 /* Key assignement */
+#ifdef HAVE_BLUETOOTH_HID
+static const struct button_mapping pad_ctx[5];
+#endif
 const struct button_mapping* plugin_contexts[]= {
+#ifdef HAVE_BLUETOOTH_HID
+    pad_ctx,
+#endif
     pla_main_ctx,
 #if defined(HAVE_REMOTE_LCD)
     pla_remote_ctx,
@@ -76,6 +82,18 @@ const struct button_mapping* plugin_contexts[]= {
 #define FIRE_INCREASE_MULT_REP      PLA_UP_REPEAT
 #define FIRE_DECREASE_MULT          PLA_DOWN
 #define FIRE_DECREASE_MULT_REP      PLA_DOWN_REPEAT
+#endif
+
+#ifdef HAVE_BLUETOOTH_HID
+/* A: flame type, X: moving, L1/R1: less/more fire; B, Options and PS quit
+ * through pla_main_ctx */
+static const struct button_mapping pad_ctx[5] = {
+    { FIRE_SWITCH_FLAMES_TYPE,   BUTTON_PAD_A,  BUTTON_NONE },
+    { FIRE_SWITCH_FLAMES_MOVING, BUTTON_PAD_X,  BUTTON_NONE },
+    { FIRE_DECREASE_MULT,        BUTTON_PAD_L1, BUTTON_NONE },
+    { FIRE_INCREASE_MULT,        BUTTON_PAD_R1, BUTTON_NONE },
+    LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_PLUGIN)
+};
 #endif
 
 #define MIN_FLAME_VALUE 0

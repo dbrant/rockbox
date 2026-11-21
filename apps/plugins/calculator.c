@@ -568,6 +568,17 @@ F3: equal to "="
 #define CALCULATOR_CALC  BUTTON_B
 #define CALCULATOR_CLEAR BUTTON_X
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define CALCULATOR_LEFT    BUTTON_LEFT
+#define CALCULATOR_RIGHT   BUTTON_RIGHT
+#define CALCULATOR_UP      BUTTON_UP
+#define CALCULATOR_DOWN    BUTTON_DOWN
+#define CALCULATOR_QUIT    (BUTTON_SELECT|BUTTON_REPEAT)
+#define CALCULATOR_INPUT_CALC_PRE BUTTON_SELECT
+#define CALCULATOR_INPUT   (BUTTON_SELECT|BUTTON_REL)
+#define CALCULATOR_CALC    (BUTTON_SELECT|BUTTON_RIGHT)
+#define CALCULATOR_CLEAR   (BUTTON_SELECT|BUTTON_LEFT)
+
 #else
 #error No keymap defined!
 #endif
@@ -2270,6 +2281,33 @@ enum plugin_status plugin_start(const void* parameter)
 
     while (calStatus != cal_exit ) {
         btn = rb->button_get_w_tmo(HZ/2);
+#ifdef HAVE_BLUETOOTH_HID
+        /* pad buttons act as the plugin's own keys */
+        switch (btn)
+        {
+            case BUTTON_PAD_A|BUTTON_REL: /* press the highlighted key */
+                btn = CALCULATOR_INPUT;
+#ifdef CALCULATOR_INPUT_CALC_PRE
+                lastbtn = CALCULATOR_INPUT_CALC_PRE; /* no press to wait for */
+#endif
+                break;
+            case BUTTON_PAD_X:            /* equals */
+                btn = CALCULATOR_CALC;
+#ifdef CALCULATOR_INPUT_CALC_PRE
+                lastbtn = CALCULATOR_INPUT_CALC_PRE; /* no press to wait for */
+#endif
+                break;
+#ifdef CALCULATOR_CLEAR
+            case BUTTON_PAD_B:            /* delete / clear */
+                btn = CALCULATOR_CLEAR;
+                break;
+#endif
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+                btn = CALCULATOR_QUIT;
+                break;
+        }
+#endif
 #ifdef HAVE_TOUCHSCREEN
         if(btn & BUTTON_TOUCHSCREEN)
         {

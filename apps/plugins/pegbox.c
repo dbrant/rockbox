@@ -764,6 +764,22 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define LVL_DOWN_TEXT "Select"
 #define SELECT_TEXT "A"
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define PEGBOX_SELECT   (BUTTON_SELECT | BUTTON_REL)
+#define PEGBOX_QUIT     (BUTTON_SELECT | BUTTON_REPEAT)
+#define PEGBOX_RESTART  (BUTTON_SELECT | BUTTON_UP)
+#define PEGBOX_LVL_UP   (BUTTON_SELECT | BUTTON_RIGHT)
+#define PEGBOX_LVL_DOWN (BUTTON_SELECT | BUTTON_LEFT)
+#define PEGBOX_UP       BUTTON_UP
+#define PEGBOX_DOWN     BUTTON_DOWN
+#define PEGBOX_RIGHT    BUTTON_RIGHT
+#define PEGBOX_LEFT     BUTTON_LEFT
+#define QUIT_TEXT       "Long SELECT"
+#define RESTART_TEXT    "SELECT+UP"
+#define LVL_UP_TEXT     "SELECT+RIGHT"
+#define LVL_DOWN_TEXT   "SELECT+LEFT"
+#define SELECT_TEXT     "SELECT release"
+
 #else
 #error "Unsupported keymap!"
 #endif
@@ -1242,6 +1258,9 @@ static void pegbox_new_piece(struct game_context* pb, unsigned int x_loc,
                 else
                     pb->playboard[x_loc][y_loc] = CIRCLE;
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case PEGBOX_SELECT:
                 exit=true;
                 break;
@@ -1461,6 +1480,10 @@ static int pegbox_main(struct game_context* pb)
                 pegbox_move_player(pb, 0, -1);
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case PEGBOX_QUIT:
                 if (pegbox_menu(pb, true)==1) {
                     return 1;
@@ -1468,6 +1491,9 @@ static int pegbox_main(struct game_context* pb)
                 break;
 
 #ifdef PEGBOX_RESTART
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+#endif
             case PEGBOX_RESTART:
                 pegbox_load_level(pb);
                 pegbox_draw_board(pb);
@@ -1475,6 +1501,10 @@ static int pegbox_main(struct game_context* pb)
 #endif
 
 #ifdef PEGBOX_LVL_UP
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+            case (BUTTON_PAD_R1|BUTTON_REPEAT):
+#endif
             case (PEGBOX_LVL_UP|BUTTON_REPEAT):
             case PEGBOX_LVL_UP:
                 if (pb->level >= pb->highlevel) {
@@ -1488,6 +1518,10 @@ static int pegbox_main(struct game_context* pb)
 #endif
 
 #ifdef PEGBOX_LVL_DOWN
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+            case (BUTTON_PAD_L1|BUTTON_REPEAT):
+#endif
             case (PEGBOX_LVL_DOWN|BUTTON_REPEAT):
             case PEGBOX_LVL_DOWN:
                 if(pb->level <= 1) {

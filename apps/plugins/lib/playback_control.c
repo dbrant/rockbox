@@ -103,9 +103,16 @@ MENUITEM_FUNCTION(shuffle_item, 0, ID2P(LANG_CHANGE_SHUFFLE_MODE),
                   shuffle, NULL, Icon_NOICON);
 MENUITEM_FUNCTION(repeat_mode_item, 0, ID2P(LANG_CHANGE_REPEAT_MODE),
                   repeat_mode, NULL, Icon_NOICON);
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+/* The plugin holds the codec's memory, so playback stopped when it started
+ * and cannot restart until it exits: only the volume is useful here. */
+MAKE_MENU(playback_control_menu, ID2P(LANG_PLAYBACK_CONTROL), NULL, Icon_NOICON,
+            &volume_item);
+#else
 MAKE_MENU(playback_control_menu, ID2P(LANG_PLAYBACK_CONTROL), NULL, Icon_NOICON,
             &prevtrack_item, &playpause_item, &stop_item, &nexttrack_item,
             &volume_item, &shuffle_item, &repeat_mode_item);
+#endif
 
 void playback_control_init(struct viewport parent[NB_SCREENS])
 {

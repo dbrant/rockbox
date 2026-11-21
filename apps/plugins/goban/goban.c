@@ -243,6 +243,9 @@ enum plugin_status
 plugin_start (const void *parameter)
 {
     int btn;
+#if defined(GBN_BUTTON_PLAY_PRE)
+    int last_btn = BUTTON_NONE;
+#endif
 
     rb->mkdir (DEFAULT_SAVE_DIR);
 
@@ -288,6 +291,11 @@ plugin_start (const void *parameter)
     for (;;)
     {
         btn = rb->button_get_w_tmo (HZ * 30);
+#if defined(GBN_BUTTON_PLAY_PRE)
+        int prev_btn = last_btn;
+        if (btn != BUTTON_NONE)
+            last_btn = btn;
+#endif
 
         if (disable_shutdown)
         {
@@ -321,6 +329,10 @@ plugin_start (const void *parameter)
 #if defined(GBN_BUTTON_ADVANCE)
         case GBN_BUTTON_ADVANCE:
         case GBN_BUTTON_ADVANCE | BUTTON_REPEAT:
+#if defined(HAVE_BLUETOOTH_HID) && defined(GBN_PAD_ADVANCE)
+        case GBN_PAD_ADVANCE:
+        case GBN_PAD_ADVANCE | BUTTON_REPEAT:
+#endif
             if (has_more_nodes_sgf ())
             {
                 if (!redo_node_sgf ())
@@ -335,6 +347,10 @@ plugin_start (const void *parameter)
 #if defined(GBN_BUTTON_RETREAT)
         case GBN_BUTTON_RETREAT:
         case GBN_BUTTON_RETREAT | BUTTON_REPEAT:
+#if defined(HAVE_BLUETOOTH_HID) && defined(GBN_PAD_RETREAT)
+        case GBN_PAD_RETREAT:
+        case GBN_PAD_RETREAT | BUTTON_REPEAT:
+#endif
             if (has_prev_nodes_sgf ())
             {
                 if (!undo_node_sgf ())
@@ -346,7 +362,18 @@ plugin_start (const void *parameter)
             break;
 #endif
 
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_A | BUTTON_REL:
+#endif
         case GBN_BUTTON_PLAY:
+#if defined(GBN_BUTTON_PLAY_PRE)
+#ifdef HAVE_BLUETOOTH_HID
+            if (prev_btn != GBN_BUTTON_PLAY_PRE && prev_btn != BUTTON_PAD_A)
+#else
+            if (prev_btn != GBN_BUTTON_PLAY_PRE)
+#endif
+                break;
+#endif
             if (play_mode == MODE_PLAY || play_mode == MODE_FORCE_PLAY)
             {
                 if (!play_move_sgf (cursor_pos, current_player))
@@ -478,6 +505,15 @@ plugin_start (const void *parameter)
             draw_screen_display ();
             break;
 
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_HOME:
+            save_game (DEFAULT_SAVE);
+
+            global_cleanup ();
+            return PLUGIN_OK;
+
+        case BUTTON_PAD_MENU:
+#endif
         case GBN_BUTTON_MENU:
             if (do_main_menu ())
             {
@@ -492,6 +528,9 @@ plugin_start (const void *parameter)
 
 #if defined(GBN_BUTTON_CONTEXT)
         case GBN_BUTTON_CONTEXT:
+#if defined(HAVE_BLUETOOTH_HID) && defined(GBN_PAD_CONTEXT)
+        case GBN_PAD_CONTEXT:
+#endif
             do_context_menu ();
             draw_screen_display ();
             break;
@@ -500,6 +539,10 @@ plugin_start (const void *parameter)
 #if defined(GBN_BUTTON_NEXT_VAR)
         case GBN_BUTTON_NEXT_VAR:
         case GBN_BUTTON_NEXT_VAR | BUTTON_REPEAT:
+#if defined(HAVE_BLUETOOTH_HID) && defined(GBN_PAD_NEXT_VAR)
+        case GBN_PAD_NEXT_VAR:
+        case GBN_PAD_NEXT_VAR | BUTTON_REPEAT:
+#endif
         {
             int temp;
             if ((temp = next_variation_sgf ()) >= 0)

@@ -1076,6 +1076,13 @@ enum plugin_status plugin_start(const void* parameter)
         case 4:
             quit = 1;
             break;
+#if CONFIG_KEYPAD == YP3_PAD
+        /* Left leaves as Quit does: else a cancel only redrew the menu, and
+         * an exit by keys had to find Quit (TS17 torture 19 step 19) */
+        case GO_TO_PREVIOUS:
+            quit = 1;
+            break;
+#endif
         default:
             break;
         }

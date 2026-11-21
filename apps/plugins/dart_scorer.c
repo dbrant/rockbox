@@ -29,6 +29,8 @@
 
 #if (CONFIG_KEYPAD == IPOD_1G2G_PAD) || (CONFIG_KEYPAD == IPOD_3G_PAD) || (CONFIG_KEYPAD == IPOD_4G_PAD)
 #define DARTS_QUIT PLA_SELECT_REPEAT
+#elif CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#define DARTS_QUIT PLA_EXIT
 #else
 #define DARTS_QUIT PLA_CANCEL
 #endif
@@ -50,7 +52,22 @@
 #define MAX_UNDO 100
 #define CENTRE_X (LCD_WIDTH/2)
 
+#ifdef HAVE_BLUETOOTH_HID
+/* B and Options: pause menu, X: undo, PS: save & quit */
+#define DARTS_PAD_MENU LAST_PLUGINLIB_ACTION
+#define DARTS_PAD_UNDO (LAST_PLUGINLIB_ACTION + 1)
+#define DARTS_PAD_QUIT (LAST_PLUGINLIB_ACTION + 2)
+static const struct button_mapping pad_ctx[] = {
+    { DARTS_PAD_MENU, BUTTON_PAD_B,    BUTTON_NONE },
+    { DARTS_PAD_MENU, BUTTON_PAD_MENU, BUTTON_NONE },
+    { DARTS_PAD_UNDO, BUTTON_PAD_X,    BUTTON_NONE },
+    { DARTS_PAD_QUIT, BUTTON_PAD_HOME, BUTTON_NONE },
+    LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_PLUGIN)
+};
+static const struct button_mapping *plugin_contexts[] = {pad_ctx, pla_main_ctx};
+#else
 static const struct button_mapping *plugin_contexts[] = {pla_main_ctx};
+#endif
 
 /* game data structures */
 enum game_mode
@@ -434,6 +451,15 @@ static enum plugin_status do_game(bool newgame)
                 &btn_row, 1, BUTTON_ROWS,
                 &btn_col, 0, BUTTON_COLS);
             break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+        case DARTS_PAD_UNDO:
+            undo();
+            break;
+        case DARTS_PAD_QUIT:
+            save_game();
+            return PLUGIN_ERROR;
+        case DARTS_PAD_MENU:
 #endif
         case DARTS_QUIT:
             switch (do_dart_scorer_pause_menu())

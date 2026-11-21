@@ -56,7 +56,11 @@
 #else
 #   include "lib/pluginlib_actions.h"
 #   define MAZE_NEW             PLA_SELECT_REPEAT
+#   if CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#   define MAZE_QUIT            PLA_EXIT
+#   else
 #   define MAZE_QUIT            PLA_CANCEL
+#   endif
 #   define MAZE_SOLVE           PLA_SELECT_REL
 #   define MAZE_RIGHT           PLA_RIGHT
 #   define MAZE_RIGHT_REPEAT    PLA_RIGHT_REPEAT

@@ -47,6 +47,9 @@ extern struct GameRec GameList[MAX_GAME_CNT];
 /* ---- The beginning of a GNUChess v2 APIfication ---- */
 void SetTimeControl(void);
 void GNUChess_Initialize(void);
+#ifdef YP3_SL6801
+bool GNUChess_Alloc(void);
+#endif
 int  VerifyMove(short player, char s[],short iop,unsigned short *mv, char *move_buffer);
 int  SelectMove ( short side, short iop , void (*callback)(void), char *move_buffer );
 void InitializeStats ( void );

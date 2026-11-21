@@ -228,6 +228,13 @@ static void cb_wt_callback ( void ) {
             wt_command = COMMAND_QUIT;
             timeout = true;
             break;
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_HOME:
+            wt_command = COMMAND_QUIT;
+            timeout = true;
+            break;
+        case BUTTON_PAD_MENU:
+#endif
         case CB_MENU:
             wt_command = COMMAND_MENU;
             timeout = true;
@@ -539,7 +546,11 @@ static struct pgn_game_node* cb_restoreposition ( void ) {
 /* ---- show menu in viewer mode---- */
 static int cb_menu_viewer(void)
 {
+#ifdef YP3_SL6801
+    int selection = 0;  /* do_menu opens on it: not on a stray item */
+#else
     int selection;
+#endif
 
     MENUITEM_STRINGLIST(menu, "Chessbox", NULL,
                         ID2P(LANG_CHESSBOX_MENU_RESTART_GAME),
@@ -579,17 +590,31 @@ static struct cb_command cb_get_viewer_command (void) {
 #endif
                 result.type = COMMAND_QUIT;
                 return result;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_HOME:
+                result.type = COMMAND_QUIT;
+                return result;
+#endif
 #ifdef CB_RESTART
             case CB_RESTART:
                 result.type = COMMAND_RESTART;
                 return result;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+#endif
             case CB_MENU:
                 result.type = cb_menu_viewer();
                 return result;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+#endif
             case CB_LEFT:
                 result.type = COMMAND_PREV;
                 return result;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+#endif
             case CB_RIGHT:
                 result.type = COMMAND_NEXT;
                 return result;
@@ -784,7 +809,11 @@ static bool cb_start_viewer(const char* filename){
 /* ---- show menu ---- */
 static int cb_menu(void)
 {
+#ifdef YP3_SL6801
+    int selection = 0;  /* do_menu opens on it: not on a stray item */
+#else
     int selection;
+#endif
 
     MENUITEM_STRINGLIST(menu,"Chessbox", NULL,
                         ID2P(LANG_CHESSBOX_MENU_NEW_GAME),
@@ -843,20 +872,38 @@ static struct cb_command cb_getcommand (void) {
 #endif
                 result.type = COMMAND_QUIT;
                 return result;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_HOME:
+                result.type = COMMAND_QUIT;
+                return result;
+#endif
 #ifdef CB_RESTART
             case CB_RESTART:
                 result.type = COMMAND_RESTART;
                 return result;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+#endif
             case CB_MENU:
                 result.type = cb_menu();
                 return result;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
+#endif
             case CB_LEVEL:
                 result.type = COMMAND_LEVEL;
                 return result;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
+#endif
             case CB_PLAY:
 #ifdef CB_PLAY_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (button != BUTTON_PAD_X && lastbutton != CB_PLAY_PRE)
+#else
                 if (lastbutton != CB_PLAY_PRE)
+#endif
                     break;
                 /* fallthrough */
 #endif
@@ -953,9 +1000,16 @@ static struct cb_command cb_getcommand (void) {
                     cb_switch ( x , y );
                 }
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case CB_SELECT:
 #ifdef CB_SELECT_PRE
+#ifdef HAVE_BLUETOOTH_HID
+                if (button != BUTTON_PAD_A && lastbutton != CB_SELECT_PRE)
+#else
                 if (lastbutton != CB_SELECT_PRE)
+#endif
                     break;
 #endif
                 if ( !marked ) {
@@ -1177,6 +1231,13 @@ enum plugin_status plugin_start(const void* parameter) {
     rb->lcd_set_backdrop(NULL);
 #endif
     cb_sysevent = 0;
+
+#ifdef YP3_SL6801
+    if (!GNUChess_Alloc()) {
+        rb->splash(HZ*2, "Out of memory");
+        return PLUGIN_ERROR;
+    }
+#endif
 
     /* end of plugin init */
 

@@ -143,7 +143,11 @@ void spkb_process_events( int evenframe )
         previous_state = buttons;
 #if (CONFIG_KEYPAD != IPOD_4G_PAD) && (CONFIG_KEYPAD != IPOD_3G_PAD) && \
     (CONFIG_KEYPAD != IPOD_1G2G_PAD)
+#ifdef ZX_MENU_CHORD
+        if ((buttons & ZX_MENU) == ZX_MENU)
+#else
         if (buttons & ZX_MENU)
+#endif
         {
 #if defined(HAVE_ADJUSTABLE_CPU_FREQ)
             rb->cpu_boost(false);

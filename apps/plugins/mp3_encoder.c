@@ -2605,6 +2605,12 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define MP3ENC_DONE     BUTTON_POWER
 #define MP3ENC_SELECT   BUTTON_RIGHT
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define MP3ENC_PREV     BUTTON_UP
+#define MP3ENC_NEXT     BUTTON_DOWN
+#define MP3ENC_DONE     BUTTON_LEFT
+#define MP3ENC_SELECT   BUTTON_SELECT
+
 #else
 #error No keymap defined!
 #endif
@@ -2656,10 +2662,24 @@ enum plugin_status plugin_start(const void* parameter)
     nrat = 9;
     srat = 4; /* set 128kBit as default */
 
+#ifdef HAVE_BLUETOOTH_HID
+    while(cont && (butt = rb->button_get_w_tmo(HZ/10)) != MP3ENC_SELECT
+          && butt != BUTTON_PAD_A)
+#else
     while(cont && (butt = rb->button_get_w_tmo(HZ/10)) != MP3ENC_SELECT)
+#endif
     {
         switch(butt)
         {
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME: cont = 0;             break;
+            case BUTTON_PAD_L1|BUTTON_REPEAT:
+            case BUTTON_PAD_L1: if(srat >  0  ) srat--; break;
+            case BUTTON_PAD_R1|BUTTON_REPEAT:
+            case BUTTON_PAD_R1: if(srat < nrat) srat++; break;
+#endif
             case MP3ENC_DONE:   cont = 0;               break;
             case MP3ENC_PREV|BUTTON_REPEAT:
             case MP3ENC_PREV:   if(srat >  0  ) srat--; break;

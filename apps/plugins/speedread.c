@@ -340,6 +340,9 @@ static int get_useraction(void)
     case PLA_SELECT:
         return PAUSE;
     case PLA_CANCEL:
+#if CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+    case PLA_EXIT:
+#endif
         return QUIT;
     case PLA_LEFT_REPEAT:
     case PLA_LEFT:

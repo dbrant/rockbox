@@ -331,6 +331,14 @@ dir is the current direction of the snake - 0=up, 1=right, 2=down, 3=left;
 #define SNAKE_DOWN      BUTTON_DOWN
 #define SNAKE_PLAYPAUSE BUTTON_SELECT
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define SNAKE_QUIT      (BUTTON_SELECT | BUTTON_REPEAT)
+#define SNAKE_LEFT      BUTTON_LEFT
+#define SNAKE_RIGHT     BUTTON_RIGHT
+#define SNAKE_UP        BUTTON_UP
+#define SNAKE_DOWN      BUTTON_DOWN
+#define SNAKE_PLAYPAUSE (BUTTON_SELECT | BUTTON_REL)
+
 #elif CONFIG_KEYPAD == ECHO_R1_PAD
 #define SNAKE_QUIT      BUTTON_POWER
 #define SNAKE_LEFT      BUTTON_LEFT
@@ -371,7 +379,15 @@ dir is the current direction of the snake - 0=up, 1=right, 2=down, 3=left;
 #define SCORE_FILE PLUGIN_GAMES_DATA_DIR "/snake.score"
 #define NUM_SCORES 5
 
-static int board[BOARD_WIDTH][BOARD_HEIGHT],snakelength;
+#ifdef YP3_SL6801
+/* Ages need -1..board area, so two bytes per cell are sufficient. */
+_Static_assert(BOARD_WIDTH * BOARD_HEIGHT + 2 <= INT16_MAX,
+               "Snake board ages exceed int16_t");
+static int16_t board[BOARD_WIDTH][BOARD_HEIGHT];
+#else
+static int board[BOARD_WIDTH][BOARD_HEIGHT];
+#endif
+static int snakelength;
 static unsigned int score, level = 1;
 static int dir;
 static bool apple, dead, ingame;
@@ -597,7 +613,13 @@ static int snake_game_loop (void) {
             rb->sleep(HZ/level);
         }
 
+#ifdef YP3_SL6801
+        /* Paused, wait for a key: polling here never yielded, which starved
+         * every other thread (the recovery watchdog reset the player). */
+        button=rb->button_get(pause);
+#else
         button=rb->button_get(false);
+#endif
 
 #ifdef HAS_BUTTON_HOLD
         if (rb->button_hold() && !pause)
@@ -616,6 +638,9 @@ static int snake_game_loop (void) {
             case SNAKE_LEFT:
                 if (dir!=1) dir=3;
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case SNAKE_PLAYPAUSE:
                 pause = !pause;
                 if (pause)
@@ -625,6 +650,10 @@ static int snake_game_loop (void) {
                 break;
 #ifdef SNAKE_RC_QUIT
             case SNAKE_RC_QUIT:
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
 #endif
             case SNAKE_QUIT:
                 return 0;

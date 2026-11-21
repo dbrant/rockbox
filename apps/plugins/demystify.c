@@ -59,7 +59,11 @@
 
 #else
 
+#if CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#define DEMYSTIFY_QUIT                      PLA_EXIT
+#else
 #define DEMYSTIFY_QUIT                      PLA_CANCEL
+#endif
 
 #define DEMYSTIFY_INCREASE_SPEED            PLA_RIGHT
 #define DEMYSTIFY_DECREASE_SPEED            PLA_LEFT

@@ -672,6 +672,25 @@ enum plugin_status plugin_start(const void *parameter) {
         button |= touchbutton_check_button(button, reversi_buttons, TOUCHBUTTON_COUNT);
 #endif
 
+#ifdef HAVE_BLUETOOTH_HID
+        /* Game controller: A makes the move like a short press of the move
+         * key, Options opens the menu, PS quits. */
+        if(button == (BUTTON_PAD_A|BUTTON_REL)) {
+            button = REVERSI_BUTTON_MAKE_MOVE|BUTTON_REL;
+#if defined(REVERSI_BUTTON_MENU_LONGPRESS) || \
+    defined(REVERSI_BUTTON_MAKE_MOVE_SHORTPRESS)
+            lastbutton = BUTTON_NONE;
+#endif
+        } else if(button == BUTTON_PAD_MENU) {
+            if (reversi_gui_menu()) {
+                return PLUGIN_USB_CONNECTED;
+            }
+            draw_screen = true;
+        } else if(button == BUTTON_PAD_HOME) {
+            exit = true;
+        }
+#endif
+
         /* All of these button presses wait for the release event */
         if(button&BUTTON_REL) {
 #ifdef REVERSI_BUTTON_QUIT

@@ -159,6 +159,9 @@ zchar do_input(int timeout, bool show_cursor)
         case PLA_EXIT:
             return ZC_HKEY_QUIT;
 
+#if CONFIG_KEYPAD == YP3_PAD
+        case PLA_LEFT:      /* Left never gives PLA_CANCEL on this pad */
+#endif
         case PLA_CANCEL:
             menu_ret = menu();
             if (menu_ret != ZC_BAD)

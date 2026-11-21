@@ -41,8 +41,19 @@ static const struct button_mapping *plugin_contexts[] = { pla_main_ctx };
     || (CONFIG_KEYPAD == IPOD_3G_PAD) \
     || (CONFIG_KEYPAD == IPOD_4G_PAD)
 #define BTN_MENU           PLA_UP
+#elif CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#define BTN_MENU           PLA_LEFT
 #else
 #define BTN_MENU           PLA_CANCEL
+#endif
+
+#ifdef HAVE_BLUETOOTH_HID
+/* Game controller: Options opens the menu (pla_main_ctx: A fires, PS exits) */
+static const struct button_mapping pad_ctx[] =
+{
+    { BTN_MENU, BUTTON_PAD_MENU, BUTTON_NONE },
+    LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_PLUGIN)
+};
 #endif
 
 /* The lowdown on source terminology:
@@ -509,8 +520,14 @@ enum plugin_status plugin_start(const void* parameter)
 
         rb->lcd_update();
 
+#ifdef HAVE_BLUETOOTH_HID
+        const struct button_mapping *pad_contexts[] = { pad_ctx, plugin_contexts[0] };
+        button = pluginlib_getaction(HZ/fps_values[frames_per_second], pad_contexts,
+                               ARRAYLEN(pad_contexts));
+#else
         button = pluginlib_getaction(HZ/fps_values[frames_per_second], plugin_contexts,
                                ARRAYLEN(plugin_contexts));
+#endif
 
         switch(button)
         {

@@ -98,6 +98,14 @@ enum {
 #define BUBBLES_FIRE_REPEAT PLA_SELECT_REPEAT
 #define BUBBLES_PAUSE       PLA_DOWN
 #define BUBBLES_QUIT2       PLA_UP
+#elif (CONFIG_KEYPAD == YP3_PAD)
+/* Fire on release: fired on the press, a long Select shot first and its
+ * PLA_EXIT came during the shot and was dropped; Left only aims (PLA_LEFT
+ * comes before PLA_CANCEL), so losing was the only way out */
+#define BUBBLES_FIRE        PLA_SELECT_REL
+#define BUBBLES_FIRE_REPEAT PLA_SELECT_REPEAT
+#define BUBBLES_PAUSE       PLA_UP
+#define BUBBLES_QUIT2       PLA_CANCEL
 #else
 #define BUBBLES_FIRE        PLA_SELECT
 #define BUBBLES_FIRE_REPEAT PLA_SELECT_REPEAT
@@ -2432,6 +2440,15 @@ static void bubbles_callback(void* param) {
     highscore_save(SCORE_FILE, highscores, NUM_SCORES);
 }
 
+#ifdef HAVE_BLUETOOTH_HID
+/* A game controller: Y pauses (A fires, B and Options or PS leave, via
+ * pla_main_ctx; its d-pad aims) */
+static const struct button_mapping bubbles_pad_ctx[] = {
+    { BUBBLES_PAUSE, BUTTON_PAD_Y, BUTTON_NONE },
+    LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_PLUGIN)
+};
+#endif
+
 /*****************************************************************************
 * bubbles_handlebuttons() handles button events during a game.
 ******************************************************************************/
@@ -2441,7 +2458,11 @@ static int bubbles_handlebuttons(struct game_context* bb, bool animblock,
     int buttonres;
     long start;
     const struct button_mapping *plugin_contexts[]
+#ifdef HAVE_BLUETOOTH_HID
+                     = { bubbles_pad_ctx, pla_main_ctx,
+#else
                      = { pla_main_ctx,
+#endif
 #ifdef HAVE_REMOTE_LCD
                          pla_remote_ctx,
 #endif

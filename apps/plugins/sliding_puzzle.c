@@ -386,6 +386,15 @@ CONFIG_KEYPAD == MROBE500_PAD
 #define PUZZLE_SHUFFLE  BUTTON_SELECT
 #define PUZZLE_PICTURE  BUTTON_START
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define PUZZLE_QUIT     (BUTTON_SELECT | BUTTON_REPEAT)
+#define PUZZLE_LEFT     BUTTON_LEFT
+#define PUZZLE_RIGHT    BUTTON_RIGHT
+#define PUZZLE_UP       BUTTON_UP
+#define PUZZLE_DOWN     BUTTON_DOWN
+#define PUZZLE_SHUFFLE  (BUTTON_SELECT | BUTTON_LEFT)
+#define PUZZLE_PICTURE  (BUTTON_SELECT | BUTTON_RIGHT)
+
 #else
 #error No keymap defined!
 #endif
@@ -774,6 +783,10 @@ static int puzzle_loop(void)
             case PUZZLE_RC_QUIT:
 #endif
             case PUZZLE_QUIT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
                 /* get out of here */
                 return PLUGIN_OK;
 
@@ -781,6 +794,9 @@ static int puzzle_loop(void)
 #ifdef PUZZLE_SHUFFLE_PICTURE_PRE
                 if (lastbutton != PUZZLE_SHUFFLE_PICTURE_PRE)
                     break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_Y:
 #endif
                 /* mix up the pieces */
                 puzzle_init();
@@ -790,6 +806,9 @@ static int puzzle_loop(void)
 #ifdef PUZZLE_SHUFFLE_PICTURE_PRE
                 if (lastbutton != PUZZLE_SHUFFLE_PICTURE_PRE)
                     break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
 #endif
                 /* change picture */
                 picmode = (picmode+1)%PICMODE_LAST_XXX;
@@ -912,6 +931,10 @@ enum plugin_status plugin_start(
         rb->lcd_putsxy(0, 18, "[Start] to stop");
         rb->lcd_putsxy(0, 28, "[B] shuffle");
         rb->lcd_putsxy(0, 38, "[A] change pic");
+#elif CONFIG_KEYPAD == YP3_PAD
+        rb->lcd_putsxy(0, 18, "Long [SELECT] stop");
+        rb->lcd_putsxy(0, 28, "[SEL+LEFT] shuffle");
+        rb->lcd_putsxy(0, 38, "[SEL+RIGHT] pic");
 #endif
 #ifdef HAVE_TOUCHSCREEN
         rb->lcd_putsxy(0, 18, PUZZLE_QUIT_TEXT " to stop");

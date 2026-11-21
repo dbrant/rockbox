@@ -450,6 +450,19 @@
 #define ROCKPAINT_LEFT      BUTTON_LEFT
 #define ROCKPAINT_RIGHT     BUTTON_RIGHT
 
+#elif CONFIG_KEYPAD == YP3_PAD
+/* SELECT draws on press (and SELECT|REPEAT finishes a curve), so the
+   other functions are SELECT chords */
+#define ROCKPAINT_QUIT      ( BUTTON_SELECT | BUTTON_LEFT )
+#define ROCKPAINT_DRAW      BUTTON_SELECT
+#define ROCKPAINT_MENU      ( BUTTON_SELECT | BUTTON_UP )
+#define ROCKPAINT_TOOLBAR   ( BUTTON_SELECT | BUTTON_RIGHT )
+#define ROCKPAINT_TOOLBAR2  ( BUTTON_SELECT | BUTTON_DOWN )
+#define ROCKPAINT_UP        BUTTON_UP
+#define ROCKPAINT_DOWN      BUTTON_DOWN
+#define ROCKPAINT_LEFT      BUTTON_LEFT
+#define ROCKPAINT_RIGHT     BUTTON_RIGHT
+
 #else
 #error "Please define keys for this keypad"
 #endif
@@ -482,6 +495,16 @@
 #ifndef ROCKPAINT_RIGHT
 #define ROCKPAINT_RIGHT     BUTTON_MIDRIGHT
 #endif
+#endif
+
+#ifdef HAVE_BLUETOOTH_HID
+/* game controller: A draws, B and PS quit, Options menu, Y and X toolbars */
+#define ROCKPAINT_PAD_DRAW      BUTTON_PAD_A
+#define ROCKPAINT_PAD_QUIT      BUTTON_PAD_B
+#define ROCKPAINT_PAD_QUIT2     BUTTON_PAD_HOME
+#define ROCKPAINT_PAD_MENU      BUTTON_PAD_MENU
+#define ROCKPAINT_PAD_TOOLBAR   BUTTON_PAD_Y
+#define ROCKPAINT_PAD_TOOLBAR2  BUTTON_PAD_X
 #endif
 
 /***********************************************************************
@@ -1377,11 +1400,18 @@ static bool browse_fonts( char *dst, int dst_size )
                 break;
 
             case ROCKPAINT_RIGHT:
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_DRAW:
+#endif
             case ROCKPAINT_DRAW:
                 ret = true;
                 rb->snprintf( dst, dst_size, FONT_DIR "/%s", dc[si].name );
                 /* fall through */
             case ROCKPAINT_LEFT:
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_QUIT:
+            case ROCKPAINT_PAD_QUIT2:
+#endif
             case ROCKPAINT_QUIT:
                 buffer->text.cache_used = cache_used;
                 buffer->text.cache_first = cache_first;
@@ -1566,6 +1596,9 @@ static unsigned int color_chooser( unsigned int color )
                 }
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_DRAW:
+#endif
             case ROCKPAINT_DRAW:
                 return color;
         }
@@ -1953,6 +1986,9 @@ static void draw_text( int x, int y )
                                 (button&ROCKPAINT_DOWN), (button&BUTTON_REPEAT));
                             break;
 
+#ifdef HAVE_BLUETOOTH_HID
+                        case ROCKPAINT_PAD_DRAW:
+#endif
                         case ROCKPAINT_DRAW:
                             break;
                         default:
@@ -1961,7 +1997,12 @@ static void draw_text( int x, int y )
                                 button = ROCKPAINT_DRAW;
                             break;
                     }
+#ifdef HAVE_BLUETOOTH_HID
+                    if( button == ROCKPAINT_DRAW
+                        || button == ROCKPAINT_PAD_DRAW ) break;
+#else
                     if( button == ROCKPAINT_DRAW ) break;
+#endif
                 }
                 break;
 
@@ -2746,6 +2787,9 @@ static void toolbar( void )
     {
         switch( button = rb->button_get( true ) )
         {
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_DRAW:
+#endif
             case ROCKPAINT_DRAW:
 #define TOP ( LCD_HEIGHT - TB_HEIGHT )
                 if( y >= TOP + TB_SC_FG_TOP
@@ -2833,9 +2877,17 @@ static void toolbar( void )
                 }
                 inv_cursor(true);
                 break;
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_QUIT:
+            case ROCKPAINT_PAD_QUIT2:
+#endif
             case ROCKPAINT_QUIT:
                 if (state != State0)
                     break;
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_TOOLBAR:
+            case ROCKPAINT_PAD_TOOLBAR2:
+#endif
             case ROCKPAINT_TOOLBAR:
             case ROCKPAINT_TOOLBAR2:
                 return;
@@ -3267,6 +3319,10 @@ static bool rockpaint_loop( void )
 
         switch(button)
         {
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_QUIT:
+            case ROCKPAINT_PAD_QUIT2:
+#endif
             case ROCKPAINT_QUIT:
                 if (state != State0)
                 {
@@ -3281,12 +3337,18 @@ static bool rockpaint_loop( void )
                 }
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_MENU:
+#endif
             case ROCKPAINT_MENU:
                 goto_menu();
                 restore_screen();
                 inv_cursor(true);
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_DRAW:
+#endif
             case ROCKPAINT_DRAW:
                 if( tools[tool].state_func )
                 {
@@ -3296,6 +3358,9 @@ static bool rockpaint_loop( void )
                 }
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_DRAW|BUTTON_REPEAT:
+#endif
             case ROCKPAINT_DRAW|BUTTON_REPEAT:
                 if( tool == Curve && state != State0 )
                 {
@@ -3309,10 +3374,19 @@ static bool rockpaint_loop( void )
                 }
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case ROCKPAINT_PAD_TOOLBAR:
+            case ROCKPAINT_PAD_TOOLBAR2:
+#endif
             case ROCKPAINT_TOOLBAR:
             case ROCKPAINT_TOOLBAR2:
                 i = x; j = y;
+#ifdef HAVE_BLUETOOTH_HID
+                x = (button == ROCKPAINT_TOOLBAR2
+                     || button == ROCKPAINT_PAD_TOOLBAR2) ? 110: 10;
+#else
                 x = (button == ROCKPAINT_TOOLBAR2) ? 110: 10;
+#endif
                 toolbar();
                 x = i; y = j;
                 restore_screen();

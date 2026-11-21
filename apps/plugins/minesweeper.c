@@ -474,6 +474,16 @@ CONFIG_KEYPAD == MROBE500_PAD
 #   define MINESWP_DISCOVER     BUTTON_A
 #   define MINESWP_INFO         BUTTON_START
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#   define MINESWP_LEFT       BUTTON_LEFT
+#   define MINESWP_RIGHT      BUTTON_RIGHT
+#   define MINESWP_UP         BUTTON_UP
+#   define MINESWP_DOWN       BUTTON_DOWN
+#   define MINESWP_QUIT       (BUTTON_SELECT | BUTTON_REPEAT)
+#   define MINESWP_TOGGLE     (BUTTON_SELECT | BUTTON_LEFT)
+#   define MINESWP_DISCOVER   (BUTTON_SELECT | BUTTON_REL)
+#   define MINESWP_INFO       (BUTTON_SELECT | BUTTON_RIGHT)
+
 #else
 #error No keymap defined!
 #endif
@@ -978,6 +988,10 @@ static enum minesweeper_status minesweeper( void )
 #ifdef MINESWP_RC_QUIT
             case MINESWP_RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case MINESWP_QUIT:
                 return MINESWEEPER_QUIT;
 
@@ -1036,6 +1050,9 @@ static enum minesweeper_status minesweeper( void )
 #ifdef MINESWP_DISCOVER2
             case MINESWP_DISCOVER2:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
                 if( minefield[y][x].flag ) break;
                 /* we put the mines on the first "click" so that you don't
                  * lose on the first "click" */
@@ -1064,6 +1081,9 @@ static enum minesweeper_status minesweeper( void )
 #ifdef MINESWP_TOGGLE2
             case MINESWP_TOGGLE2:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+#endif
                 if( !minefield[y][x].known )
                     minefield[y][x].flag = !minefield[y][x].flag;
                 break;
@@ -1074,6 +1094,9 @@ static enum minesweeper_status minesweeper( void )
 #ifdef MINESWP_INFO_PRE
                 if( lastbutton != MINESWP_INFO_PRE )
                     break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_VIEW:
 #endif
                 if( no_mines )
                     break;

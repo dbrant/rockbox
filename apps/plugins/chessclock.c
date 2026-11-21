@@ -427,6 +427,16 @@
 #define CHC_SETTINGS_OK     BUTTON_A
 #define CHC_SETTINGS_CANCEL BUTTON_B
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define CHC_QUIT            (BUTTON_SELECT|BUTTON_REPEAT)
+#define CHC_STARTSTOP       (BUTTON_SELECT|BUTTON_REL)
+#define CHC_RESET           BUTTON_LEFT
+#define CHC_MENU            BUTTON_RIGHT
+#define CHC_SETTINGS_INC    BUTTON_UP
+#define CHC_SETTINGS_DEC    BUTTON_DOWN
+#define CHC_SETTINGS_OK     (BUTTON_SELECT|BUTTON_REL)
+#define CHC_SETTINGS_CANCEL BUTTON_LEFT
+
 #else
 #error No keymap defined!
 #endif
@@ -680,21 +690,33 @@ static int run_timer(int nr)
         button = rb->button_get(false);
         switch (button) {
             /* OFF/ON key to exit */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_HOME:
+#endif
             case CHC_QUIT:
                 return CHCL_CANCEL; /* Indicate exit */
 
             /* PLAY = Stop/Start toggle */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case CHC_STARTSTOP:
                 chesspause=!chesspause;
                 show_pause_mode(chesspause);
                 break;
 
             /* LEFT = Reset timer */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_X:
+#endif
             case CHC_RESET:
                 ticks=0;
                 break;
 
                 /* MENU  */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+#endif
             case CHC_MENU:
             {
                 MENUITEM_STRINGLIST(menu, "Chess Clock", NULL,
@@ -759,12 +781,18 @@ static int run_timer(int nr)
             break;
 
             /* UP (RIGHT/+) = Scroll Lap timer up */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+#endif
             case CHC_SETTINGS_INC:
                 retval = CHCL_NEXT;
                 done = true;
                 break;
 
             /* DOWN (LEFT/-) = Scroll Lap timer down */
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+#endif
             case CHC_SETTINGS_DEC:
                 retval = CHCL_PREV;
                 done = true;
@@ -811,14 +839,25 @@ static int chessclock_set_int(char* string,
         switch(button) {
             case CHC_SETTINGS_INC:
             case CHC_SETTINGS_INC | BUTTON_REPEAT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+            case BUTTON_PAD_R1 | BUTTON_REPEAT:
+#endif
                 *variable += step;
                 break;
 
             case CHC_SETTINGS_DEC:
             case CHC_SETTINGS_DEC | BUTTON_REPEAT:
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+            case BUTTON_PAD_L1 | BUTTON_REPEAT:
+#endif
                 *variable -= step;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+#endif
             case CHC_SETTINGS_OK:
 #ifdef CHC_SETTINGS_OK2
             case CHC_SETTINGS_OK2:
@@ -826,6 +865,10 @@ static int chessclock_set_int(char* string,
                 done = true;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+            case BUTTON_PAD_HOME:
+#endif
             case CHC_SETTINGS_CANCEL:
 #ifdef CHC_SETTINGS_CANCEL2
             case CHC_SETTINGS_CANCEL2:

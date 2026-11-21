@@ -31,7 +31,15 @@
 
 #include <ctype.h>
 
+#ifdef YP3_SL6801
+/* The transposition table and history don't fit in the plugin buffer;
+   GNUChess_Alloc() carves them from the audio buffer. ttblsz is a power
+   of two, shrunk if the audio buffer is small. */
+#define ttblsz_max 4096
+static int ttblsz;
+#else
 #define ttblsz 4096
+#endif
 
 #define ctlP 0x4000
 #define ctlN 0x2800
@@ -166,9 +174,15 @@ unsigned short PV,hint,Swag0,Swag1,Swag2,Swag3,Swag4;
 unsigned short hashkey;
 unsigned long hashbd;
 struct hashval hashcode[2][7][64];
+#ifdef YP3_SL6801
+struct hashentry *ttable;
+struct hashentry *ptbl;
+unsigned char *history;
+#else
 struct hashentry ttable[ttblsz];
 struct hashentry *ptbl;
 unsigned char history[8192];
+#endif
 
 short Mwpawn[64],Mbpawn[64],Mknight[2][64],Mbishop[2][64];
 short Mking[2][64],Kfield[2][64];
@@ -2356,6 +2370,30 @@ void NewGame()  {
   ElapsedTime(1);
   withbook = true;
 }
+
+#ifdef YP3_SL6801
+/* ---- Allocate the big tables from the audio buffer (stops playback) ---- */
+bool GNUChess_Alloc ( void ) {
+  size_t size;
+  unsigned char *buf;
+
+  if (ttable)
+    return true;
+  buf = rb->plugin_get_audio_buffer(&size);
+  /* align for struct hashentry */
+  if (buf)
+    ALIGN_BUFFER(buf, size, sizeof(long));
+  if (!buf || size < 8192 + 256*sizeof(struct hashentry))
+    return false;
+  history = buf;
+  buf += 8192; size -= 8192;
+  for (ttblsz = ttblsz_max; ttblsz*sizeof(struct hashentry) > size; )
+    ttblsz >>= 1;
+  ttable = (struct hashentry *)buf;
+  rb->memset(ttable, 0, ttblsz*sizeof(struct hashentry));
+  return true;
+}
+#endif
 
 /* ---- Initialize variables and reset board ---- */
 void GNUChess_Initialize ( void ) {

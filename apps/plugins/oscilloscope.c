@@ -586,6 +586,19 @@
 #define OSCILLOSCOPE_VOL_UP          BUTTON_UP
 #define OSCILLOSCOPE_VOL_DOWN        BUTTON_DOWN
 
+#elif (CONFIG_KEYPAD == YP3_PAD)
+#define OSCILLOSCOPE_QUIT            (BUTTON_SELECT | BUTTON_REPEAT)
+#define OSCILLOSCOPE_DRAWMODE_PRE    BUTTON_SELECT
+#define OSCILLOSCOPE_DRAWMODE        (BUTTON_SELECT | BUTTON_REL)
+#define OSCILLOSCOPE_ORIENTATION     (BUTTON_SELECT | BUTTON_LEFT)
+#define OSCILLOSCOPE_ADVMODE         (BUTTON_SELECT | BUTTON_DOWN)
+#define OSCILLOSCOPE_PAUSE           (BUTTON_SELECT | BUTTON_UP)
+#define OSCILLOSCOPE_SPEED_UP        BUTTON_RIGHT
+#define OSCILLOSCOPE_SPEED_DOWN      BUTTON_LEFT
+#define OSCILLOSCOPE_VOL_UP          BUTTON_UP
+#define OSCILLOSCOPE_VOL_DOWN        BUTTON_DOWN
+/* Not enough plugin RAM for waveform view */
+
 #else
 #error No keymap defined!
 #endif
@@ -2077,10 +2090,17 @@ enum plugin_status plugin_start(const void* parameter)
 #ifdef OSCILLOSCOPE_RC_QUIT
             case OSCILLOSCOPE_RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+#endif
             case OSCILLOSCOPE_QUIT:
                 exit = true;
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_B:
+#endif
             case OSCILLOSCOPE_ADVMODE:
 #ifdef OSCILLOSCOPE_GRAPHMODE
                 if (osc.graphmode == GRAPH_WAVEFORM)
@@ -2142,6 +2162,10 @@ enum plugin_status plugin_start(const void* parameter)
                 osc_popupmsg(OSC_MSG_PAUSED, paused ? 1 : 0);
                 break;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+            case BUTTON_PAD_R1 | BUTTON_REPEAT:
+#endif
             case OSCILLOSCOPE_SPEED_UP:
             case OSCILLOSCOPE_SPEED_UP | BUTTON_REPEAT:
             {
@@ -2155,6 +2179,10 @@ enum plugin_status plugin_start(const void* parameter)
                 break;
             }
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+            case BUTTON_PAD_L1 | BUTTON_REPEAT:
+#endif
             case OSCILLOSCOPE_SPEED_DOWN:
             case OSCILLOSCOPE_SPEED_DOWN | BUTTON_REPEAT:
             {
@@ -2168,6 +2196,10 @@ enum plugin_status plugin_start(const void* parameter)
                 break;
             }
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R2:
+            case BUTTON_PAD_R2 | BUTTON_REPEAT:
+#endif
             case OSCILLOSCOPE_VOL_UP:
             case OSCILLOSCOPE_VOL_UP | BUTTON_REPEAT:
             {
@@ -2183,6 +2215,10 @@ enum plugin_status plugin_start(const void* parameter)
                 break;
             }
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L2:
+            case BUTTON_PAD_L2 | BUTTON_REPEAT:
+#endif
             case OSCILLOSCOPE_VOL_DOWN:
             case OSCILLOSCOPE_VOL_DOWN | BUTTON_REPEAT:
             {
@@ -2197,6 +2233,29 @@ enum plugin_status plugin_start(const void* parameter)
                 osc_popupmsg(OSC_MSG_VOLUME, vol);
                 break;
             }
+
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+                if (++osc.draw >= MAX_DRAW)
+                    osc.draw = 0;
+
+                osc_popupmsg(OSC_MSG_DRAWMODE, osc.draw);
+                break;
+
+            case BUTTON_PAD_X:
+                if (++osc.orientation >= MAX_OSC)
+                    osc.orientation = 0;
+
+                graphmode_reset();
+                osc_popupmsg(OSC_MSG_ORIENTATION, osc.orientation);
+                break;
+
+            case BUTTON_PAD_Y:
+                paused = !paused;
+                graphmode_pause_unpause(paused);
+                osc_popupmsg(OSC_MSG_PAUSED, paused ? 1 : 0);
+                break;
+#endif
 
             default:
                 exit_on_usb(button);

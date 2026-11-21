@@ -74,6 +74,11 @@ void ev_poll(void)
             btn = rb->button_status();
         }
         buttons |= btn;
+#if CONFIG_KEYPAD == YP3_PAD
+        /* Only five keys: a long SELECT is a virtual MENU key */
+        if (btn == (BUTTON_SELECT | BUTTON_REPEAT))
+            buttons |= YP3_ROCKBOY_MENU;
+#endif
 #if defined(HAVE_SCROLLWHEEL) && !defined(ROCKBOY_SCROLLWHEEL)
         /* filter out scroll wheel events if not supported */
         buttons &= ~(BUTTON_SCROLL_FWD|BUTTON_SCROLL_BACK);

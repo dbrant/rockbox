@@ -161,7 +161,7 @@ extern const struct image_decoder image_decoder;
         const struct imgdec_header __header \
         __attribute__ ((section (".header")))= { \
         { PLUGIN_MAGIC, TARGET_ID, IMGDEC_API_VERSION, \
-          plugin_start_addr, plugin_end_addr, }, &image_decoder, \
+          plugin_start_addr, plugin_end_addr LC_HEADER_BUILD_ID }, &image_decoder, \
           &rb, PLUGIN_API_VERSION, sizeof(struct plugin_api), \
           &iv, sizeof(struct imgdec_api) };
 #else /* PLATFORM_HOSTED */

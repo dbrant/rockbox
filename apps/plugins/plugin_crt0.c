@@ -100,6 +100,16 @@ enum plugin_status plugin__start(const void *param)
      * portalplayer has this). If we don't clear the cache, those aliases
      * may read garbage */
     rb->commit_dcache();
+
+#ifdef YP3_SL6801
+    {   /* C++ static constructors (kept by plugin.lds) */
+        extern void (*__plugin_init_array_start[])(void);
+        extern void (*__plugin_init_array_end[])(void);
+        void (**ctor)(void);
+        for (ctor = __plugin_init_array_start; ctor < __plugin_init_array_end; ctor++)
+            (*ctor)();
+    }
+#endif
 #endif
 
     /* we come back here if exit() was called or the plugin returned normally */

@@ -721,6 +721,24 @@
 #define STAR_LEVEL_DOWN_NAME "Select"
 #define STAR_LEVEL_REPEAT_NAME "X"
 
+#elif CONFIG_KEYPAD == YP3_PAD
+
+#define STAR_QUIT           (BUTTON_SELECT | BUTTON_REPEAT)
+#define STAR_LEFT           BUTTON_LEFT
+#define STAR_RIGHT          BUTTON_RIGHT
+#define STAR_UP             BUTTON_UP
+#define STAR_DOWN           BUTTON_DOWN
+#define STAR_TOGGLE_CONTROL_PRE BUTTON_SELECT
+#define STAR_TOGGLE_CONTROL (BUTTON_SELECT | BUTTON_REL)
+#define STAR_LEVEL_UP       (BUTTON_SELECT | BUTTON_RIGHT)
+#define STAR_LEVEL_DOWN     (BUTTON_SELECT | BUTTON_LEFT)
+#define STAR_LEVEL_REPEAT   (BUTTON_SELECT | BUTTON_DOWN)
+#define STAR_TOGGLE_CONTROL_NAME "SELECT"
+#define STAR_QUIT_NAME      "Long SELECT"
+#define STAR_LEVEL_UP_NAME  "SELECT + RIGHT"
+#define STAR_LEVEL_DOWN_NAME "SELECT + LEFT"
+#define STAR_LEVEL_REPEAT_NAME "SELECT + DOWN"
+
 #else
 #error No keymap defined!
 #endif
@@ -1242,6 +1260,10 @@ static int star_run_game(int current_level)
 #ifdef STAR_RC_QUIT
                 case STAR_RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_MENU:
+                case BUTTON_PAD_HOME:
+#endif
                 case STAR_QUIT:
                     return -1;
 
@@ -1266,6 +1288,9 @@ static int star_run_game(int current_level)
                     if (lastkey != STAR_LEVEL_DOWN_PRE)
                         break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_L1:
+#endif
                     if (current_level > 0)
                     {
                         current_level--;
@@ -1273,6 +1298,9 @@ static int star_run_game(int current_level)
                     }
                     break;
 
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_Y:
+#endif
                 case STAR_LEVEL_REPEAT:
                     star_load_level(current_level);
                     break;
@@ -1281,6 +1309,9 @@ static int star_run_game(int current_level)
 #ifdef STAR_LEVEL_UP_PRE
                     if (lastkey != STAR_LEVEL_UP_PRE)
                         break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_R1:
 #endif
                     if (current_level < STAR_LEVEL_COUNT - 1)
                     {
@@ -1293,6 +1324,9 @@ static int star_run_game(int current_level)
 #ifdef STAR_TOGGLE_CONTROL_PRE
                     if (lastkey != STAR_TOGGLE_CONTROL_PRE)
                         break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_A:
 #endif
 #ifdef STAR_TOGGLE_CONTROL2
                 case STAR_TOGGLE_CONTROL2:

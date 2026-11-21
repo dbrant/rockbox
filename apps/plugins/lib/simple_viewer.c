@@ -283,12 +283,31 @@ static void cleanup(void *parameter)
     rb->viewportmanager_theme_undo(SCREEN_MAIN, false);
 }
 
+#ifdef HAVE_BLUETOOTH_HID
+/* A game controller: L1/R1 page up/down, L2/R2 top/bottom; the rest
+ * (A/B/Options/PS leave) comes from pla_main_ctx */
+static const struct button_mapping pad_view_ctx[] = {
+    {PLA_LEFT,         BUTTON_PAD_L1,                BUTTON_NONE},
+    {PLA_RIGHT,        BUTTON_PAD_R1,                BUTTON_NONE},
+    {PLA_LEFT_REPEAT,  BUTTON_PAD_L2,                BUTTON_NONE},
+    {PLA_RIGHT_REPEAT, BUTTON_PAD_R2,                BUTTON_NONE},
+    LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_PLUGIN)
+};
+#endif
+
 int view_text(const char *title, const char *text)
 {
     struct view_info info;
+#ifdef HAVE_BLUETOOTH_HID
+    const struct button_mapping *view_contexts[] = {
+        pad_view_ctx,
+        pla_main_ctx,
+    };
+#else
     const struct button_mapping *view_contexts[] = {
         pla_main_ctx,
     };
+#endif
     int button;
 
     info.sbs_has_title = rb->sb_set_persistent_title(title, Icon_NOICON, SCREEN_MAIN);

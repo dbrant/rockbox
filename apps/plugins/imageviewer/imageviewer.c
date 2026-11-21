@@ -413,6 +413,33 @@ static int ask_and_get_audio_buffer(const char *filename)
             case IMGVIEW_MENU:
                 return PLUGIN_OK;
 
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_A:
+                iv_api.plug_buf = false;
+                buf = rb->plugin_get_audio_buffer(&buf_size);
+                /*try again this file, now using the audio buffer */
+                return PLUGIN_OTHER;
+
+            case BUTTON_PAD_MENU:
+            case BUTTON_PAD_HOME:
+                return PLUGIN_OK;
+
+            case BUTTON_PAD_L1:
+                if(entries>1)
+                {
+                    rb->lcd_clear_display();
+                    return change_filename(DIR_PREV);
+                }
+                break;
+
+            case BUTTON_PAD_R1:
+                if(entries>1)
+                {
+                    rb->lcd_clear_display();
+                    return change_filename(DIR_NEXT);
+                }
+                break;
+#endif
             case IMGVIEW_LEFT:
                 if(entries>1)
                 {
@@ -764,6 +791,9 @@ static int scroll_bmp(struct image_info *info, bool initial_frame)
             if (lastbutton != IMGVIEW_MENU_PRE)
                 break;
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_MENU:
+#endif
 #ifdef USEGSLIB
             grey_show(false); /* switch off greyscale overlay */
 #endif
@@ -799,6 +829,27 @@ static int scroll_bmp(struct image_info *info, bool initial_frame)
                 break;
 #endif
             return PLUGIN_OK;
+            break;
+#endif
+
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_HOME:
+            return PLUGIN_OK;
+
+        case BUTTON_PAD_A:
+            return ZOOM_IN;
+
+        case BUTTON_PAD_B:
+            return ZOOM_OUT;
+
+        case BUTTON_PAD_L1:
+            if (entries > 1)
+                return change_filename(DIR_PREV);
+            break;
+
+        case BUTTON_PAD_R1:
+            if (entries > 1)
+                return change_filename(DIR_NEXT);
             break;
 #endif
 

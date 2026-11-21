@@ -293,7 +293,7 @@ const struct button_mapping pla_main_ctx[] =
     { PLA_DOWN_REPEAT,      BUTTON_DOWN|BUTTON_REPEAT,          BUTTON_NONE },
     { PLA_LEFT_REPEAT,      BUTTON_LEFT|BUTTON_REPEAT,          BUTTON_NONE },
     { PLA_RIGHT_REPEAT,     BUTTON_RIGHT|BUTTON_REPEAT,         BUTTON_NONE },
-#elif CONFIG_KEYPAD == ECHO_R1_PAD
+#elif CONFIG_KEYPAD == ECHO_R1_PAD || CONFIG_KEYPAD == YP3_PAD
     { PLA_UP,               BUTTON_UP,                          BUTTON_NONE },
     { PLA_DOWN,             BUTTON_DOWN,                        BUTTON_NONE },
     { PLA_LEFT,             BUTTON_LEFT,                        BUTTON_NONE },
@@ -549,6 +549,12 @@ const struct button_mapping pla_main_ctx[] =
     {PLA_SELECT,            BUTTON_SELECT,                      BUTTON_NONE},
     {PLA_SELECT_REL,        BUTTON_SELECT|BUTTON_REL,           BUTTON_SELECT},
     {PLA_SELECT_REPEAT,     BUTTON_SELECT|BUTTON_REPEAT,        BUTTON_NONE},
+#elif (CONFIG_KEYPAD == YP3_PAD)
+    {PLA_CANCEL,            BUTTON_LEFT,                        BUTTON_NONE},
+    {PLA_EXIT,              BUTTON_SELECT|BUTTON_REPEAT,        BUTTON_SELECT},
+    {PLA_SELECT,            BUTTON_SELECT,                      BUTTON_NONE},
+    {PLA_SELECT_REL,        BUTTON_SELECT|BUTTON_REL,            BUTTON_SELECT},
+    {PLA_SELECT_REPEAT,     BUTTON_SELECT|BUTTON_REPEAT,        BUTTON_NONE},
 #elif (CONFIG_KEYPAD == ECHO_R1_PAD)
     {PLA_CANCEL,            BUTTON_B,                           BUTTON_NONE},
     {PLA_EXIT,              BUTTON_POWER,                       BUTTON_NONE},
@@ -559,6 +565,16 @@ const struct button_mapping pla_main_ctx[] =
 #   ifndef HAVE_TOUCHSCREEN
 #       error pluginlib_actions: No actions defined
 #   endif
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+    /* A game controller, alike on every target: A selects, B cancels,
+     * Options or PS exits; its d-pad holds the directions above */
+    {PLA_SELECT,            BUTTON_PAD_A,                       BUTTON_NONE},
+    {PLA_SELECT_REL,        BUTTON_PAD_A|BUTTON_REL,            BUTTON_PAD_A},
+    {PLA_SELECT_REPEAT,     BUTTON_PAD_A|BUTTON_REPEAT,         BUTTON_NONE},
+    {PLA_CANCEL,            BUTTON_PAD_B,                       BUTTON_NONE},
+    {PLA_EXIT,              BUTTON_PAD_MENU,                    BUTTON_NONE},
+    {PLA_EXIT,              BUTTON_PAD_HOME,                    BUTTON_NONE},
 #endif
     LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_PLUGIN),
 };

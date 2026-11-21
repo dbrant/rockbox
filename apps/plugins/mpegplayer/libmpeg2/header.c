@@ -581,6 +581,9 @@ static void finalize_matrix (mpeg2dec_t * mpeg2dec)
         if (mpeg2dec->copy_matrix & (1 << i))
             copy_matrix (mpeg2dec, i);
 
+#ifdef MPEG2_420_ONLY
+        decoder->chroma_quantizer[i] = decoder->quantizer_prescale[i];
+#else
         if ((mpeg2dec->copy_matrix & (4 << i)) &&
             rb->memcmp(mpeg2dec->quantizer_matrix[i],
                        mpeg2dec->new_quantizer_matrix[i+2], 64))
@@ -592,6 +595,7 @@ static void finalize_matrix (mpeg2dec_t * mpeg2dec)
         {
             decoder->chroma_quantizer[i] = decoder->quantizer_prescale[i];
         }
+#endif
     }
 }
 
@@ -1182,15 +1186,19 @@ mpeg2_state_t mpeg2_header_slice_start (mpeg2dec_t * mpeg2dec)
     {
         prescale (mpeg2dec, 0);
 
+#ifndef MPEG2_420_ONLY
         if (decoder->chroma_quantizer[0] == decoder->quantizer_prescale[2])
             prescale (mpeg2dec, 2);
+#endif
 
         if (mpeg2dec->decoder.coding_type != I_TYPE)
         {
             prescale (mpeg2dec, 1);
 
+#ifndef MPEG2_420_ONLY
             if (decoder->chroma_quantizer[1] == decoder->quantizer_prescale[3])
                 prescale (mpeg2dec, 3);
+#endif
         }
     }
 

@@ -42,7 +42,11 @@
 
 #else
 #   include "lib/pluginlib_actions.h"
+#   if CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+#   define MAZEZAM_MENU     PLA_EXIT
+#   else
 #   define MAZEZAM_MENU     PLA_CANCEL
+#   endif
 #   define MAZEZAM_RIGHT    PLA_RIGHT
 #   define MAZEZAM_LEFT     PLA_LEFT
 #   define MAZEZAM_UP       PLA_UP
@@ -53,6 +57,18 @@
 #   define MAZEZAM_DOWN_REPEAT  PLA_DOWN_REPEAT
 const struct button_mapping *plugin_contexts[]
 = { pla_main_ctx };
+#endif
+
+#if defined(HAVE_BLUETOOTH_HID) && defined(__PLUGINLIB_ACTIONS_H__)
+/* B and Options: in-game menu, PS: quit */
+#define MAZEZAM_PAD_QUIT LAST_PLUGINLIB_ACTION
+static const struct button_mapping pad_ctx[] = {
+    { MAZEZAM_MENU,     BUTTON_PAD_B,    BUTTON_NONE },
+    { MAZEZAM_MENU,     BUTTON_PAD_MENU, BUTTON_NONE },
+    { MAZEZAM_PAD_QUIT, BUTTON_PAD_HOME, BUTTON_NONE },
+    LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_PLUGIN)
+};
+static const struct button_mapping *pad_contexts[] = { pad_ctx, pla_main_ctx };
 #endif
 
 /* All the text is here */
@@ -553,8 +569,13 @@ static void level_loop(struct level_info* li, short* shift, short *x, short *y)
         draw_level(li, shift, *x, *y);
         rb->lcd_update();
 #ifdef __PLUGINLIB_ACTIONS_H__
+#ifdef HAVE_BLUETOOTH_HID
+        button = pluginlib_getaction(TIMEOUT_BLOCK, pad_contexts,
+                ARRAYLEN(pad_contexts));
+#else
         button = pluginlib_getaction(TIMEOUT_BLOCK, plugin_contexts,
                 ARRAYLEN(plugin_contexts));
+#endif
 #else
         button = rb->button_get(true);
 #endif
@@ -622,6 +643,12 @@ static void level_loop(struct level_info* li, short* shift, short *x, short *y)
             case MAZEZAM_MENU:
                 state = STATE_GAME_MENU;
                 break;
+
+#if defined(HAVE_BLUETOOTH_HID) && defined(__PLUGINLIB_ACTIONS_H__)
+            case MAZEZAM_PAD_QUIT:
+                state = STATE_QUIT;
+                break;
+#endif
 
             default:
                 if (rb->default_event_handler(button) == SYS_USB_CONNECTED)

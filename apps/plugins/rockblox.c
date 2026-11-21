@@ -494,6 +494,16 @@
 #define ROCKBLOX_DROP          BUTTON_SELECT
 #define ROCKBLOX_RESTART       BUTTON_USER
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define ROCKBLOX_OFF    (BUTTON_SELECT | BUTTON_REPEAT)
+#define ROCKBLOX_LEFT   BUTTON_LEFT
+#define ROCKBLOX_RIGHT  BUTTON_RIGHT
+#define ROCKBLOX_ROTATE_CW BUTTON_UP
+#define ROCKBLOX_ROTATE_CCW (BUTTON_UP | BUTTON_SELECT)
+#define ROCKBLOX_DOWN   BUTTON_DOWN
+#define ROCKBLOX_DROP   (BUTTON_SELECT | BUTTON_REL)
+#define ROCKBLOX_DROP_PRE BUTTON_SELECT
+
 #elif CONFIG_KEYPAD == ECHO_R1_PAD
 
 #define ROCKBLOX_OFF           BUTTON_POWER
@@ -845,10 +855,20 @@ extern const fb_data rockblox_background[];
  * layout is a smaller one centred */
 static void draw_background(void)
 {
+#if defined(YP3_SL6801) && LCD_DEPTH == 1
+    /* Avoid a full-screen bitmap in the small monochrome game overlay. */
+    rb->lcd_clear_display();
+    rb->lcd_drawrect(BOARD_X - 1, BOARD_Y - 1,
+                    BLOCK_WIDTH * 10 + 2, BLOCK_HEIGHT * 20 + 2);
+    rb->lcd_putsxy(LABEL_X, SCORE_Y - 10, "Score");
+    rb->lcd_putsxy(LABEL_X, LEVEL_Y - 10, "Level");
+    rb->lcd_putsxy(LABEL_X, LINES_Y - 10, "Lines");
+#else
     if (LAYOUT_X > 0)
         rb->lcd_clear_display();
     rb->lcd_bitmap(rockblox_background, LAYOUT_X, 0,
                    LCD_WIDTH - 2 * LAYOUT_X, LCD_HEIGHT);
+#endif
 }
 
 #ifndef HIGHSCORE_SPACE
@@ -1614,6 +1634,10 @@ static int rockblox_loop (void)
 #ifdef ROCKBLOX_RC_OFF
         case ROCKBLOX_RC_OFF:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_MENU:
+        case BUTTON_PAD_HOME:
+#endif
         case ROCKBLOX_OFF:
 #ifdef ROCKBLOX_OFF_PRE
             if (lastbutton != ROCKBLOX_OFF_PRE)
@@ -1640,6 +1664,10 @@ static int rockblox_loop (void)
                 /* fallback */
             case ROCKBLOX_ROTATE_CCW2:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_L1:
+            case BUTTON_PAD_X:
+#endif
                 move_block (0, 0, (rockblox_status.co + 1) % figures[rockblox_status.cf].max_or);
             break;
 
@@ -1654,6 +1682,10 @@ static int rockblox_loop (void)
 #ifdef ROCKBLOX_ROTATE_CW2
                 /* fallback */
             case ROCKBLOX_ROTATE_CW2:
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+            case BUTTON_PAD_R1:
+            case BUTTON_PAD_B:
 #endif
                 move_block (0, 0,
                             (rockblox_status.co + figures[rockblox_status.cf].max_or -
@@ -1679,6 +1711,9 @@ static int rockblox_loop (void)
 #ifdef ROCKBLOX_DROP_PRE
             if (lastbutton != ROCKBLOX_DROP_PRE)
                 break;
+#endif
+#ifdef HAVE_BLUETOOTH_HID
+        case BUTTON_PAD_A:
 #endif
             while (canMoveTo (rockblox_status.cx, rockblox_status.cy + 1, rockblox_status.co))
                 move_block (0, 1, rockblox_status.co);

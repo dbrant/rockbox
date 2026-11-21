@@ -28,8 +28,15 @@
     || (CONFIG_KEYPAD == IPOD_3G_PAD) \
     || (CONFIG_KEYPAD == IPOD_4G_PAD)
 #define JACKPOT_QUIT PLA_UP
+#define JACKPOT_PLAY PLA_SELECT
+#elif CONFIG_KEYPAD == YP3_PAD   /* Left is PLA_LEFT: PLA_CANCEL never fires */
+/* a long Select quits, so a turn starts on the release: started on the
+ * press, its animation outlasted the hold and the quit never came */
+#define JACKPOT_QUIT PLA_EXIT
+#define JACKPOT_PLAY PLA_SELECT_REL
 #else
 #define JACKPOT_QUIT PLA_CANCEL
+#define JACKPOT_PLAY PLA_SELECT
 #endif
 
 const struct button_mapping* plugin_contexts[]={pla_main_ctx};
@@ -190,13 +197,14 @@ static void jackpot_print_turn_result(struct jackpot* game,
     display->update();
 }
 
-static void jackpot_play_turn(struct jackpot* game)
+/* A turn; true if the player quit during its animation */
+static bool jackpot_play_turn(struct jackpot* game)
 {
     /* How many pattern? */
     int nb_turns[NB_SLOTS];
     int gain,turns_remaining=0;
     if(game->money<=0)
-        return;
+        return false;
     game->money--;
     for(int i=0;i<NB_SLOTS;i++)
     {
@@ -225,12 +233,22 @@ static void jackpot_play_turn(struct jackpot* game)
         FOR_NB_SCREENS(d)
             jackpot_display_slot_machine(game, rb->screens[d]);
         rb->sleep(SLEEP_TIME);
+#if CONFIG_KEYPAD == YP3_PAD
+        /* the animation's whole-screen updates take seconds on this LCD,
+         * longer than a quitting hold */
+        int action = pluginlib_getaction(TIMEOUT_NOBLOCK, plugin_contexts,
+                                         ARRAYLEN(plugin_contexts));
+        if (action == JACKPOT_QUIT)
+            return true;
+        exit_on_usb(action);
+#endif
     }
     gain=jackpot_get_gain(game);
     if(gain!=0)
         game->money+=gain;
     FOR_NB_SCREENS(d)
         jackpot_print_turn_result(game, gain, rb->screens[d]);
+    return false;
 }
 
 enum plugin_status plugin_start(const void* parameter)
@@ -256,8 +274,9 @@ enum plugin_status plugin_start(const void* parameter)
         {
             case JACKPOT_QUIT:
                 return PLUGIN_OK;
-            case PLA_SELECT:
-                jackpot_play_turn(&game);
+            case JACKPOT_PLAY:
+                if (jackpot_play_turn(&game))
+                    return PLUGIN_OK;
                 break;
 
             default:

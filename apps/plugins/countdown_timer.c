@@ -22,7 +22,25 @@
 #include "lib/pluginlib_actions.h"
 #include "lib/pluginlib_exit.h"
 
+#ifdef HAVE_BLUETOOTH_HID
+/* Options and PS leave from any state */
+#define PAD_QUIT LAST_PLUGINLIB_ACTION
+static const struct button_mapping pad_ctx[] = {
+    { PAD_QUIT, BUTTON_PAD_MENU, BUTTON_NONE },
+    { PAD_QUIT, BUTTON_PAD_HOME, BUTTON_NONE },
+    LAST_ITEM_IN_LIST__NEXTLIST(CONTEXT_PLUGIN)
+};
+const struct button_mapping *plugin_contexts[] = { pad_ctx, pla_main_ctx };
+#else
 const struct button_mapping *plugin_contexts[] = { pla_main_ctx };
+#endif
+
+#if CONFIG_KEYPAD == YP3_PAD
+/* Left is PLA_LEFT here, so PLA_CANCEL never fires, and a long Select
+ * (PLA_EXIT) is the way out. Its press has already started or paused the
+ * timer, so it quits from every state, not only from pause. */
+#define EXIT_FROM_ANY_STATE
+#endif
 
 #define MAX_MINUTES 99
 #define MAX_SECONDS 59
@@ -154,6 +172,10 @@ enum plugin_status plugin_start(const void *parameter)
 
         draw(&ctx);
         button = get_button();
+#ifdef HAVE_BLUETOOTH_HID
+        if (button == PAD_QUIT)
+            return PLUGIN_OK;
+#endif
 
         switch (ctx.state) {
             case STATE_SETUP: {
@@ -196,6 +218,10 @@ enum plugin_status plugin_start(const void *parameter)
                             ctx.state = STATE_RUNNING;
                         }
                         break;
+#ifdef EXIT_FROM_ANY_STATE
+                    case PLA_EXIT:
+                        return PLUGIN_OK;
+#endif
                     default:
                         exit_on_usb(button);
                         break;
@@ -210,6 +236,10 @@ enum plugin_status plugin_start(const void *parameter)
                     case PLA_SELECT:
                         ctx.state = STATE_PAUSED;
                         break;
+#ifdef EXIT_FROM_ANY_STATE
+                    case PLA_EXIT:
+                        return PLUGIN_OK;
+#endif
                     default:
                         exit_on_usb(button);
                         break;

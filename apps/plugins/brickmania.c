@@ -389,6 +389,14 @@ CONFIG_KEYPAD == SANSA_M200_PAD
 #define UP          BUTTON_UP
 #define DOWN        BUTTON_DOWN
 
+#elif CONFIG_KEYPAD == YP3_PAD
+#define QUIT        (BUTTON_SELECT | BUTTON_REPEAT)
+#define LEFT        BUTTON_LEFT
+#define RIGHT       BUTTON_RIGHT
+#define SELECT      BUTTON_SELECT
+#define UP          BUTTON_UP
+#define DOWN        BUTTON_DOWN
+
 #else
 #error No keymap defined!
 #endif
@@ -1513,6 +1521,8 @@ static int brickmania_help(void)
 #elif (CONFIG_KEYPAD == IRIVER_H100_PAD) || \
       (CONFIG_KEYPAD == IRIVER_H300_PAD)
         "STOP:",
+#elif CONFIG_KEYPAD == YP3_PAD
+        "Hold SELECT:",
 #else
         "POWER:",
 #endif
@@ -2502,6 +2512,9 @@ static int brickmania_game_loop(void)
                 case (BUTTON_REL | BUTTON_TOUCHSCREEN):
 #endif
                 case UP:
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_A:
+#endif
                 case SELECT:
 #ifdef ALTSELECT
                 case ALTSELECT:
@@ -2557,6 +2570,10 @@ static int brickmania_game_loop(void)
 #ifdef RC_QUIT
                 case RC_QUIT:
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_MENU:
+                case BUTTON_PAD_HOME:
+#endif
                 case QUIT:
                     resume = true;
                     return 0;
@@ -2564,6 +2581,9 @@ static int brickmania_game_loop(void)
 
                 /* MI: added suicide button in case the ball gets stuck or
                  whatever */
+#ifdef HAVE_BLUETOOTH_HID
+                case BUTTON_PAD_Y:
+#endif
                 case SUICIDE:
                     life--;
                     rb->splash(HZ,"Balls killed!");

@@ -17,6 +17,10 @@ load_code-sim.c
 
 stubs.c
 
+#ifdef HAVE_BLUETOOTH
+bt-simtest.c
+#endif
+
 #else
 dummylib.c /* for now, so the lib actually builds */
 #endif /* SIMULATOR */

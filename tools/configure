@@ -608,6 +608,14 @@ armcortexm7cc () {
  endian="little"
 }
 
+armcortexm4cc () {
+ findarmgcc
+ GCCOPTS="$CCOPTS -march=armv7e-m -mcpu=cortex-m4 -mthumb -mfloat-abi=soft"
+ GCCOPTS="$GCCOPTS -ffunction-sections -fdata-sections -fstack-usage"
+ GCCOPTIMIZE="-fomit-frame-pointer -Os"
+ endian="little"
+}
+
 mipselcc () {
  prefixtools mipsel-elf-
  # mips is predefined, but we want it for paths. use __mips instead
@@ -4123,6 +4131,30 @@ fi
     t_manufacturer="ingenic_x1000"
     t_soc="ingenic"
     t_model="shanlingq1"
+    ;;
+
+    6801|yp3)
+    target_id=255 # local experimental ID; not an upstream allocation
+    modelname="yp3"
+    target="YP3_SL6801"
+    memory=1 # low-memory feature bucket; actual SRAM size is 0x80000
+    armcortexm4cc
+    appextra=""
+    plugins="yes"
+    tool="false " # no firmware packaging/boot path exists yet
+    boottool="false "
+    output="YP3-UNIMPLEMENTED-IMAGE"
+    bootoutput="YP3-UNIMPLEMENTED-BOOTLOADER"
+    sysfont="08-Rockfont"
+    sysfontbl="08-Rockfont"
+    toolset="$genericbitmaptools reggen"
+    bmp2rb_mono="$rootdir/tools/bmp2rb -f 0"
+    bmp2rb_native="$rootdir/tools/bmp2rb -f 5"
+    t_cpu="arm"
+    t_manufacturer="sl6801"
+    t_model="yp3"
+    GCCOPTS="-g $GCCOPTS"
+    USE_ELF="yes"
     ;;
 
     270|echor1)

@@ -1,6 +1,8 @@
 #ifdef SIMULATOR
 buttonmaps.c
-#if CONFIG_KEYPAD == GIGABEAT_PAD
+#if CONFIG_KEYPAD == YP3_PAD
+yp3.c
+#elif CONFIG_KEYPAD == GIGABEAT_PAD
 gigabeat.c
 #elif CONFIG_KEYPAD == GIGABEAT_S_PAD
 gigabeat-s.c

@@ -16,6 +16,15 @@ gesture.c
 #endif
 language.c
 main.c
+#ifdef HAVE_SHARED_CODEC_PLUGIN_BUFFER
+module_arena.c
+#endif
+#ifdef HAVE_DEVLOG
+dev_shell.c
+#endif
+#ifdef HAVE_BATTLOG
+battlog.c
+#endif
 menu.c
 menus/menu_common.c
 menus/display_menu.c
@@ -29,7 +38,9 @@ menus/audiohw_eq_menu.c
 #endif
 menus/eq_menu.c
 buffering.c
+#ifndef HAVE_NO_VOICE
 voice_thread.c
+#endif
 rbcodec_helpers.c
 menus/main_menu.c
 menus/playback_menu.c
@@ -38,6 +49,10 @@ menus/playlist_menu.c
 menus/recording_menu.c
 #endif
 menus/settings_menu.c
+#ifdef HAVE_BLUETOOTH
+menus/bluetooth_menu.c
+bluetooth_policy.c
+#endif
 menus/sound_menu.c
 #if CONFIG_RTC
 menus/time_menu.c
@@ -56,7 +71,9 @@ settings_list.c
 shortcuts.c
 status.c
 cuesheet.c
+#ifndef HAVE_NO_VOICE
 talk.c
+#endif
 tree.c
 #ifdef HAVE_TAGCACHE
 tagtree.c
@@ -184,6 +201,9 @@ tagcache.c
 #ifdef HAVE_TOUCHSCREEN
 keymaps/keymap-touchscreen.c
 #endif
+#ifdef HAVE_BLUETOOTH_HID
+keymaps/keymap-pad.c
+#endif
 #if (CONFIG_KEYPAD == IRIVER_H100_PAD) \
     || (CONFIG_KEYPAD == IRIVER_H300_PAD)
 keymaps/keymap-h1x0_h3x0.c
@@ -296,6 +316,8 @@ keymaps/keymap-erosq.c
 keymaps/keymap-shanlingq1.c
 #elif CONFIG_KEYPAD == ECHO_R1_PAD
 keymaps/keymap-echor1.c
+#elif CONFIG_KEYPAD == YP3_PAD
+keymaps/keymap-yp3.c
 #elif CONFIG_KEYPAD == SURFANS_F28_PAD
 keymaps/keymap-surfansf28.c
 #elif CONFIG_KEYPAD == RG_NANO_PAD

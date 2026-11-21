@@ -97,3 +97,39 @@ picross
 #if (LCD_DEPTH > 1)
 xrick
 #endif
+
+#if LCD_WIDTH >= 96 && LCD_HEIGHT >= 64
+anarch
+celeste
+#endif
+
+#ifdef YP3_SL6801
+videoplayer
+rockgpt
+#endif
+
+/* RockTrack tracker (rocktrack/DESIGN.md); only tried on the YP3 so far */
+#if defined(YP3_SL6801) || defined(ROCKTRACK_ANY_TARGET)
+rocktrack
+#endif
+
+/* YP3 research ports (newplugins/research.txt) */
+#if defined(HAVE_LCD_COLOR) && LCD_WIDTH >= 128 && LCD_HEIGHT >= 128
+saf
+s3l
+ardurogue
+cgl
+flipper
+arduboy
+pokitto
+fxdemos
+gamebuino
+prizmracing
+terrario
+gotchi
+ebt
+rumblo
+#if LCD_HEIGHT >= 160
+tanks
+#endif
+#endif

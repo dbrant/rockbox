@@ -92,14 +92,17 @@ crypt_firmware.c
 
 #if defined(HAVE_LCD_COLOR) && (LCD_STRIDEFORMAT == HORIZONTAL_STRIDE) && !defined(RG_NANO) /* Build issues */
 #if (PLUGIN_BUFFER_SIZE > 0x14000) && (CONFIG_PLATFORM & (PLATFORM_NATIVE |PLATFORM_HOSTED)) && (defined(CPU_ARM) || defined(CPU_MIPS))
+#ifndef YP3_SL6801 /* loaders for engines that do not fit the 128 KB arena */
 duke3d.c
 quake.c
 wolf3d.c
 #endif
 #endif
+#endif
 
 #if PLUGIN_BUFFER_SIZE <= 0x20000
 
+#ifndef YP3_SL6801 /* emulators (not wanted) with fixed-address overlays */
 #if CONFIG_KEYPAD != SANSA_M200_PAD \
     && CONFIG_KEYPAD != HM60X_PAD
 /* not enough buttons for rockboy */
@@ -107,9 +110,14 @@ rockboy.c
 #endif
 
 zxbox.c
+#endif
+#ifndef YP3_SL6801 /* yp3 builds chessbox.rock itself (chessbox.make) */
 chessbox.c
+#endif
+#ifndef YP3_SL6801 /* overlays: see above */
 goban.c
 pictureflow.c
+#endif
 
 #endif /* PLUGIN_BUFFER_SIZE <= 0x20000 */
 
@@ -208,6 +216,16 @@ superdom.c
 #endif /* LCD_DEPTH > 1 */
 
 
+
+/* Ported demos/games (single file) */
+#if LCD_WIDTH >= 96 && LCD_HEIGHT >= 64
+rock88.c
+jetisland.c
+#endif
+#if defined(HAVE_LCD_COLOR)
+microcity.c
+rockcraft.c
+#endif
 
 #ifdef HAVE_TEST_PLUGINS /* enable in advanced build options */
 #ifdef HAVE_ADJUSTABLE_CPU_FREQ

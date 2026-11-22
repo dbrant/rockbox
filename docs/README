@@ -1,3 +1,9 @@
+THIS IS MY FORK OF ROCKBOX - see https://rockslop.jayd.ml for more information
+
+This repo adds support for:
+- The YP3 (SmartLink SL6801)
+- The TS17 / TS28 (Actions Lark (0x2351))
+
                __________               __   ___.
      Open      \______   \ ____   ____ |  | _\_ |__   _______  ___
      Source     |       _//  _ \_/ ___\|  |/ /| __ \ /  _ \  \/  /
